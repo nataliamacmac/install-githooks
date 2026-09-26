@@ -1,0 +1,32 @@
+#!/bin/sh
+# install-githooks managed
+
+CONTEXTO="$1"
+CORPO=$(cat)
+BLOQUEIO=$(printf '%s\n' "$CORPO" | LC_ALL=C grep -nEi \
+  -e 'co[- ]?authored[- ]?by:.*(claude|anthropic|copilot|chatgpt|gpt-|openai|gemini|cursor|codex|devin|windsurf|bot@|noreply@)' \
+  -e 'co[- ]?authored[- ]?by:.*(artificial intelligence|ai assistant|llm|language model|assistant|agent|bot)' \
+  -e 'co[- ]?authored[- ]?by:.*(^|[^[:alnum:]])(ai|ia|llm)([^[:alnum:]]|$)' \
+  -e '(generated|created|written|authored|produced|assisted) (with|by) .*(claude|anthropic|chatgpt|openai|copilot|gemini|cursor|codex|llm|artificial intelligence)' \
+  -e '(generated|created|written|authored) by an? (ai|artificial intelligence|assistant|agent|model|bot)' \
+  -e '^(ai|llm)[- ]?(assisted|generated|authored)' \
+  -e '(assisted|generated)[- ]by:' \
+  -e 'noreply@anthropic\.com')
+
+ROBO=$(printf '\360\237\244\226')
+EMOJI=$(printf '%s\n' "$CORPO" | LC_ALL=C grep -nF "$ROBO")
+if [ -n "$EMOJI" ]; then
+  if [ -n "$BLOQUEIO" ]; then
+    BLOQUEIO=$(printf '%s\n%s' "$BLOQUEIO" "$EMOJI")
+  else
+    BLOQUEIO="$EMOJI"
+  fi
+fi
+
+if [ -n "$BLOQUEIO" ]; then
+  echo "Git bloqueado: atribuicao de autoria ou geracao por IA em $CONTEXTO."
+  echo "$BLOQUEIO"
+  exit 1
+fi
+
+exit 0

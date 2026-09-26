@@ -1,0 +1,14 @@
+#!/bin/sh
+# install-githooks managed
+
+CONTEXTO="$1"
+BLOQUEIO=$(LC_ALL=C grep -nEi \
+  -e '(^|[^[:alnum:]])(claude([[:space:]_-]*code)?|anthropic|cursor|grok|codex|openai|chat[[:space:]_-]*gpt|gpt([[:space:]_-]*[0-9]+([.][0-9]+)*)?|copilot|gemini|devin|windsurf)([^[:alnum:]]|$)')
+
+if [ -n "$BLOQUEIO" ]; then
+  echo "Git bloqueado: termo de IA proibido em $CONTEXTO."
+  echo "$BLOQUEIO"
+  exit 1
+fi
+
+exit 0

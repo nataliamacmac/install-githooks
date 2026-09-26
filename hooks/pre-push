@@ -1,0 +1,36 @@
+#!/bin/sh
+# install-githooks managed
+
+HOOK_DIR="$(dirname "$0")"
+FALHA=0
+ENTRADA=$(mktemp)
+trap 'rm -f "$ENTRADA"' EXIT HUP INT TERM
+cat > "$ENTRADA"
+
+while IFS=' ' read -r REF_LOCAL OID_LOCAL REF_REMOTA OID_REMOTO; do
+  [ -z "$REF_LOCAL" ] && continue
+  if ! printf '%s\n' "$REF_LOCAL" | "$HOOK_DIR/_bloquear_termos_ia" "referência local"; then FALHA=1; fi
+  if ! printf '%s\n' "$REF_REMOTA" | "$HOOK_DIR/_bloquear_termos_ia" "referência remota"; then FALHA=1; fi
+
+  case "$OID_LOCAL" in
+    ''|*[!0]*) ;;
+    *) continue ;;
+  esac
+  case "$OID_REMOTO" in
+    ''|*[!0]*) COMMITS=$(git rev-list "$OID_LOCAL" "^$OID_REMOTO" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; } ;;
+    *) COMMITS=$(git rev-list "$OID_LOCAL" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; } ;;
+  esac
+
+  for COMMIT in $COMMITS; do
+    MENSAGEM=$(git show -s --format=%B "$COMMIT") || { echo 'Git bloqueado: falha ao ler commit enviado.'; FALHA=1; continue; }
+    if ! printf '%s\n' "$MENSAGEM" | "$HOOK_DIR/_bloquear_termos_ia" "mensagem do commit $COMMIT"; then FALHA=1; fi
+    if ! printf '%s\n' "$MENSAGEM" | "$HOOK_DIR/_bloquear_atribuicao_ia" "mensagem do commit $COMMIT"; then FALHA=1; fi
+  done
+done < "$ENTRADA"
+
+if [ "$FALHA" -ne 0 ]; then exit 1; fi
+"$HOOK_DIR/_delegar" pre-push "$@" < "$ENTRADA"
+RESULTADO=$?
+rm -f "$ENTRADA"
+trap - EXIT HUP INT TERM
+exit "$RESULTADO"

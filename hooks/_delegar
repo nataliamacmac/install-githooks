@@ -1,0 +1,13 @@
+#!/bin/sh
+# install-githooks managed
+
+NOME="$1"
+shift
+GIT_COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null)"
+HOOK_LOCAL="$GIT_COMMON_DIR/hooks/$NOME"
+
+if [ -n "$GIT_COMMON_DIR" ] && [ -x "$HOOK_LOCAL" ] && [ "$HOOK_LOCAL" != "$0" ]; then
+  exec "$HOOK_LOCAL" "$@"
+fi
+
+exit 0

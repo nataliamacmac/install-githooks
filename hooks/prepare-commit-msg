@@ -1,0 +1,10 @@
+#!/bin/sh
+# install-githooks managed
+
+MSG_FILE="$1"
+CORPO=$(grep -v '^#' "$MSG_FILE")
+HOOK_DIR="$(dirname "$0")"
+
+printf '%s\n' "$CORPO" | "$HOOK_DIR/_bloquear_termos_ia" "mensagem de commit" || exit 1
+printf '%s\n' "$CORPO" | "$HOOK_DIR/_bloquear_atribuicao_ia" "mensagem de commit" || exit 1
+exec "$HOOK_DIR/_delegar" prepare-commit-msg "$@"

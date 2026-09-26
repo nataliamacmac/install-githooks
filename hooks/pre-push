@@ -17,7 +17,13 @@ while IFS=' ' read -r REF_LOCAL OID_LOCAL REF_REMOTA OID_REMOTO; do
     *) continue ;;
   esac
   case "$OID_REMOTO" in
-    ''|*[!0]*) COMMITS=$(git rev-list "$OID_LOCAL" "^$OID_REMOTO" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; } ;;
+    ''|*[!0]*)
+      if git cat-file -e "$OID_REMOTO^{commit}" 2>/dev/null; then
+        COMMITS=$(git rev-list "$OID_LOCAL" "^$OID_REMOTO" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; }
+      else
+        COMMITS=$(git rev-list "$OID_LOCAL" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; }
+      fi
+      ;;
     *) COMMITS=$(git rev-list "$OID_LOCAL" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; } ;;
   esac
 

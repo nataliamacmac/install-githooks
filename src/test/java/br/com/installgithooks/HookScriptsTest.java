@@ -67,6 +67,19 @@ class HookScriptsTest {
     }
 
     @Test
+    void prePushValidaHistoricoQuandoOidRemotoNaoFoiBaixado() throws Exception {
+        Path repo = criarRepositorio("push-remoto-novo");
+        String local = git(repo, "rev-parse", "HEAD").output().trim();
+        String remotoDesconhecido = "1111111111111111111111111111111111111111";
+
+        Result pushHook = executar(repo,
+                "refs/heads/main " + local + " refs/heads/main " + remotoDesconhecido + "\n",
+                Map.of(), BASH, HOOKS.resolve("pre-push").toString(), "origin", "https://example.invalid/repo");
+
+        assertEquals(0, pushHook.exitCode(), pushHook.output());
+    }
+
+    @Test
     void scannerAvisaSobreCoreHooksPathLocal() throws Exception {
         Path root = Files.createDirectory(tempDir.resolve("repos"));
         Path custom = Files.createDirectory(root.resolve("repo-customizado"));

@@ -3,9 +3,18 @@
 
 HOOK_DIR="$(dirname "$0")"
 FALHA=0
+EU=$("$HOOK_DIR/_email_committer")
 ENTRADA=$(mktemp)
 trap 'rm -f "$ENTRADA"' EXIT HUP INT TERM
 cat > "$ENTRADA"
+
+listar_commits() {
+  if [ -n "$EU" ]; then
+    git rev-list --fixed-strings --committer="<$EU>" "$@"
+  else
+    git rev-list "$@"
+  fi
+}
 
 while IFS=' ' read -r REF_LOCAL OID_LOCAL REF_REMOTA OID_REMOTO; do
   [ -z "$REF_LOCAL" ] && continue
@@ -19,12 +28,12 @@ while IFS=' ' read -r REF_LOCAL OID_LOCAL REF_REMOTA OID_REMOTO; do
   case "$OID_REMOTO" in
     ''|*[!0]*)
       if git cat-file -e "$OID_REMOTO^{commit}" 2>/dev/null; then
-        COMMITS=$(git rev-list "$OID_LOCAL" "^$OID_REMOTO" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; }
+        COMMITS=$(listar_commits "$OID_LOCAL" "^$OID_REMOTO" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; }
       else
-        COMMITS=$(git rev-list "$OID_LOCAL" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; }
+        COMMITS=$(listar_commits "$OID_LOCAL" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; }
       fi
       ;;
-    *) COMMITS=$(git rev-list "$OID_LOCAL" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; } ;;
+    *) COMMITS=$(listar_commits "$OID_LOCAL" 2>/dev/null) || { echo 'Git bloqueado: falha ao listar commits enviados.'; FALHA=1; continue; } ;;
   esac
 
   for COMMIT in $COMMITS; do

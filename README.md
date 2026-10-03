@@ -9,7 +9,9 @@ bash install.sh --scan
 
 O instalador configura `core.hooksPath` no Git global e preserva cópias dos hooks globais que substituir. Hooks locais em `.git/hooks` continuam sendo delegados quando o repositório não define seu próprio `core.hooksPath`.
 
-As travas verificam mensagens e coautoria de commits, nomes de referências e commits enviados. O hook `reference-transaction` também rejeita referências e mensagens proibidas mesmo com `git commit --no-verify`. No Git anterior a 2.29 essa garantia não está disponível.
+As travas verificam mensagens e coautoria de commits, nomes de referências e commits enviados. O hook `reference-transaction` também rejeita referências e mensagens proibidas mesmo com `git commit --no-verify`, `--amend`, rebase, cherry-pick e merge. No Git anterior a 2.29 essa garantia não está disponível.
+
+`reference-transaction` e `pre-push` só verificam a mensagem de commits cujo committer é a identidade que o Git usaria para um commit novo naquele repositório (`git var GIT_COMMITTER_IDENT`). Commits de terceiros recebidos por clone, fetch ou pull passam. As referências que só espelham o remoto (`refs/remotes/*`, `FETCH_HEAD` e `ORIG_HEAD`) não são verificadas. Se o Git não conseguir determinar a identidade, todos os commits são verificados.
 
 Para procurar configurações locais que sobrepõem os hooks globais:
 
@@ -20,7 +22,7 @@ bash scripts/scan-custom-hooks.sh "$HOME" /c/ /d/
 
 Uma configuração `core.hooksPath` no próprio repositório tem precedência sobre a global. O scanner mostra a origem e o valor para revisão manual.
 
-Hooks locais não conseguem validar título ou descrição de PR criado pelo site ou API. O `pre-push` valida branches e mensagens dos commits; validação dos metadados do PR precisa ser configurada no provedor Git.
+Hooks locais não conseguem validar título ou descrição de PR criado pelo site ou API. O `pre-push` valida branches e mensagens dos commits próprios; validação dos metadados do PR precisa ser configurada no provedor Git.
 
 ## Testes
 

@@ -9,12 +9,20 @@ cat > "$ENTRADA"
 FALHA=0
 
 if [ "$ESTADO" = prepared ]; then
+  EU=$("$HOOK_DIR/_email_committer")
   while IFS=' ' read -r OID_ANTIGO OID_NOVO REFERENCIA; do
     [ -z "$REFERENCIA" ] && continue
+    case "$REFERENCIA" in
+      refs/remotes/*|FETCH_HEAD|ORIG_HEAD) continue ;;
+    esac
     if ! printf '%s\n' "$REFERENCIA" | "$HOOK_DIR/_bloquear_termos_ia" "nome de referência"; then FALHA=1; fi
     case "$OID_NOVO" in
       ''|*[!0]*)
         if COMMIT=$(git rev-parse --verify "$OID_NOVO^{commit}" 2>/dev/null); then
+          if [ -n "$EU" ]; then
+            COMMITTER=$(git show -s --format=%ce "$COMMIT") || { echo 'Git bloqueado: falha ao ler commit da referência.'; FALHA=1; continue; }
+            [ "$COMMITTER" = "$EU" ] || continue
+          fi
           MENSAGEM=$(git show -s --format=%B "$COMMIT") || { echo 'Git bloqueado: falha ao ler commit da referência.'; FALHA=1; continue; }
           if ! printf '%s\n' "$MENSAGEM" | "$HOOK_DIR/_bloquear_termos_ia" "mensagem do commit $COMMIT"; then FALHA=1; fi
           if ! printf '%s\n' "$MENSAGEM" | "$HOOK_DIR/_bloquear_atribuicao_ia" "mensagem do commit $COMMIT"; then FALHA=1; fi

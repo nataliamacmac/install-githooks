@@ -1,0 +1,11 @@
+#!/bin/sh
+# install-githooks managed
+
+IDENTIDADE=$(git var GIT_COMMITTER_IDENT 2>/dev/null) || exit 0
+case "$IDENTIDADE" in
+  *'<'*'>'*) ;;
+  *) exit 0 ;;
+esac
+EMAIL=${IDENTIDADE#*<}
+EMAIL=${EMAIL%%>*}
+printf '%s\n' "$EMAIL"

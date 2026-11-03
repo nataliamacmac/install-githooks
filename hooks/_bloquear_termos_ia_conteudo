@@ -1,0 +1,18 @@
+#!/bin/sh
+# install-githooks managed
+#
+# Termos de IA para nomes de arquivo e conteudo versionado (usado pelo pre-commit). A lista e mais estreita que a de
+# mensagens e nomes de referencia (_bloquear_termos_ia): fica de fora o que e palavra comum em codigo e texto
+# (cursor, codex, grok, gemini, devin, windsurf e "gpt" isolado), para nao bloquear commits legitimos.
+
+CONTEXTO="$1"
+BLOQUEIO=$(LC_ALL=C grep -nEi \
+  -e '(^|[^[:alnum:]])(claude([[:space:]_-]*code)?|anthropic|openai|chat[[:space:]_-]*gpt|gpt[[:space:]_-]*[0-9][[:alnum:].]*|copilot|opus|sonnet|haiku|sub[[:space:]_-]*agent(e|es|s)?)([^[:alnum:]]|$)')
+
+if [ -n "$BLOQUEIO" ]; then
+  echo "Git bloqueado: termo de IA proibido em $CONTEXTO."
+  echo "$BLOQUEIO"
+  exit 1
+fi
+
+exit 0

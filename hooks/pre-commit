@@ -1,0 +1,45 @@
+#!/bin/sh
+# install-githooks managed
+#
+# Varre o que esta sendo commitado: NOME de cada arquivo e CONTEUDO adicionado (linhas "+" do diff do indice) em busca
+# de termos de IA (ver _bloquear_termos_ia_conteudo). Arquivos podem ser isentos por repositorio com padroes de caminho:
+#   git config --local --add hooks.termosIaIgnorar 'caminho/ou/padrao/*'
+# Depois delega ao pre-commit local do repositorio, se existir.
+
+HOOK_DIR="$(dirname "$0")"
+FALHA=0
+LISTA=$(mktemp)
+trap 'rm -f "$LISTA"' EXIT HUP INT TERM
+IGNORAR=$(git config --get-all hooks.termosIaIgnorar 2>/dev/null)
+
+ignorado() {
+  [ -z "$IGNORAR" ] && return 1
+  printf '%s\n' "$IGNORAR" | {
+    while IFS= read -r PADRAO; do
+      [ -z "$PADRAO" ] && continue
+      case "$1" in $PADRAO) exit 0 ;; esac
+    done
+    exit 1
+  }
+}
+
+git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR > "$LISTA"
+
+while IFS= read -r ARQUIVO; do
+  [ -z "$ARQUIVO" ] && continue
+  ignorado "$ARQUIVO" && continue
+  SAIDA=$(printf '%s\n' "$ARQUIVO" | "$HOOK_DIR/_bloquear_termos_ia_conteudo" "nome de arquivo ($ARQUIVO)") || { printf '%s\n' "$SAIDA"; FALHA=1; }
+  # Arquivo movido: inclui o caminho antigo no diff para o git parear a renomeacao e mostrar so o que mudou.
+  ANTIGO=$(git -c core.quotePath=false diff --cached -M --name-status --diff-filter=R | awk -F '\t' -v n="$ARQUIVO" '$3 == n { print $2 }')
+  SAIDA=$(git diff --cached --no-color -U0 -M --diff-filter=ACMR -- "$ARQUIVO" ${ANTIGO:+"$ANTIGO"} | grep '^+' | grep -v '^+++ ' | sed 's/^+//' | "$HOOK_DIR/_bloquear_termos_ia_conteudo" "conteudo adicionado em $ARQUIVO") || { printf '%s\n' "$SAIDA"; FALHA=1; }
+done < "$LISTA"
+
+if [ "$FALHA" -ne 0 ]; then
+  echo "Commit bloqueado. Remova os termos, ou, se o arquivo precisa citá-los (ex.: o próprio hook), isente o caminho:"
+  echo "  git config --local --add hooks.termosIaIgnorar '<caminho-ou-padrao>'"
+  exit 1
+fi
+
+rm -f "$LISTA"
+trap - EXIT HUP INT TERM
+exec "$HOOK_DIR/_delegar" pre-commit "$@"

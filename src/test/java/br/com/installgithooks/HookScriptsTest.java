@@ -243,6 +243,128 @@ class HookScriptsTest {
     }
 
     @Test
+    void mensagemComNomesDeModeloESubagenteEBloqueada() throws Exception {
+        Path repo = criarRepositorio("modelos");
+        String headAntes = head(repo);
+
+        for (String mensagem : List.of("feat: validado por Opus", "fix: executado pelo Sonnet", "docs: revisao Haiku",
+                "chore: tarefa do subagente", "chore: sub-agent concluiu", "chore: subagentes em paralelo")) {
+            Result commit = git(repo, "commit", "--allow-empty", "-m", mensagem);
+            assertNotEquals(0, commit.exitCode(), mensagem + " -> " + commit.output());
+        }
+        assertEquals(headAntes, head(repo));
+    }
+
+    @Test
+    void preCommitBloqueiaNomeDeArquivoComTermoDeIa() throws Exception {
+        Path repo = criarRepositorio("pc-nome");
+        Files.writeString(repo.resolve("relatorio-opus.md"), "conteudo neutro\n");
+        assertEquals(0, git(repo, "add", "relatorio-opus.md").exitCode());
+        String headAntes = head(repo);
+
+        Result commit = git(repo, "commit", "-m", "docs: relatorio");
+
+        assertNotEquals(0, commit.exitCode(), commit.output());
+        assertTrue(commit.output().contains("nome de arquivo"), commit.output());
+        assertEquals(headAntes, head(repo));
+    }
+
+    @Test
+    void preCommitBloqueiaConteudoComTermoDeIa() throws Exception {
+        Path repo = criarRepositorio("pc-conteudo");
+        for (String linha : List.of("Validado pelo Opus.", "executor: Sonnet", "revisao do Haiku", "feito por subagentes",
+                "Gerado com Claude Code", "usa o OpenAI", "modelo gpt-4o", "via Copilot")) {
+            Files.writeString(repo.resolve("nota.md"), linha + "\n");
+            assertEquals(0, git(repo, "add", "nota.md").exitCode());
+
+            Result commit = git(repo, "commit", "-m", "docs: nota");
+
+            assertNotEquals(0, commit.exitCode(), linha + " -> " + commit.output());
+            assertTrue(commit.output().contains("conteudo adicionado em nota.md"), commit.output());
+            assertEquals(0, git(repo, "reset", "-q").exitCode());
+        }
+    }
+
+    @Test
+    void preCommitPermiteConteudoELinhasRemovidasSemTermo() throws Exception {
+        Path repo = criarRepositorio("pc-limpo");
+        Files.writeString(repo.resolve("Consulta.java"),
+                "// cursor do banco, codex de leis e gemini do zodiaco; GPT e a tabela de particoes\n");
+        assertEquals(0, git(repo, "add", "Consulta.java").exitCode());
+
+        Result commit = git(repo, "commit", "-m", "feat: consulta");
+
+        assertEquals(0, commit.exitCode(), commit.output());
+    }
+
+    @Test
+    void preCommitSoVeLinhasAdicionadasNaoAsRemovidas() throws Exception {
+        Path repo = criarRepositorio("pc-remocao");
+        Files.writeString(repo.resolve("nota.md"), "linha antiga\n");
+        assertEquals(0, git(repo, "add", "nota.md").exitCode());
+        assertEquals(0, git(repo, "commit", "-m", "docs: nota").exitCode());
+        // simula um termo ja existente no historico e sendo removido agora
+        Files.writeString(repo.resolve("nota.md"), "linha nova limpa\n");
+        assertEquals(0, git(repo, "add", "nota.md").exitCode());
+
+        Result commit = git(repo, "commit", "-m", "docs: limpar nota");
+
+        assertEquals(0, commit.exitCode(), commit.output());
+    }
+
+    @Test
+    void preCommitPermiteMoverArquivoQueJaTinhaOTermoNoHistorico() throws Exception {
+        Path repo = criarRepositorio("pc-mover");
+        Files.writeString(repo.resolve("config.json"), "{\n  \"nome\": \"copilot-teste\",\n  \"x\": 1\n}\n");
+        assertEquals(0, git(repo, "add", "config.json").exitCode());
+        // o termo ja esta no historico: entrou antes do hook existir
+        assertEquals(0, git(repo, "-c", "core.hooksPath=/dev/null", "commit", "-m", "docs: config").exitCode());
+        Files.createDirectories(repo.resolve("novo"));
+        assertEquals(0, git(repo, "mv", "config.json", "novo/config.json").exitCode());
+
+        Result commit = git(repo, "commit", "-m", "chore: move a config");
+
+        assertEquals(0, commit.exitCode(), commit.output());
+    }
+
+    @Test
+    void preCommitBloqueiaTermoNovoEmArquivoMovido() throws Exception {
+        Path repo = criarRepositorio("pc-mover-novo");
+        String base = "{\n  \"nome\": \"copilot-teste\",\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3,\n  \"d\": 4,\n"
+                + "  \"e\": 5,\n  \"f\": 6,\n  \"g\": 7,\n  \"h\": 8\n";
+        Files.writeString(repo.resolve("config.json"), base + "}\n");
+        assertEquals(0, git(repo, "add", "config.json").exitCode());
+        assertEquals(0, git(repo, "-c", "core.hooksPath=/dev/null", "commit", "-m", "docs: config").exitCode());
+        Files.createDirectories(repo.resolve("novo"));
+        assertEquals(0, git(repo, "mv", "config.json", "novo/config.json").exitCode());
+        Files.writeString(repo.resolve("novo/config.json"), base.replace("\"h\": 8", "\"h\": \"Claude Code\"") + "}\n");
+        assertEquals(0, git(repo, "add", "novo/config.json").exitCode());
+
+        Result commit = git(repo, "commit", "-m", "chore: move e edita a config");
+
+        assertNotEquals(0, commit.exitCode(), commit.output());
+        assertTrue(commit.output().contains("Claude Code"), commit.output());
+        assertFalse(commit.output().contains("copilot-teste"), commit.output());
+    }
+
+    @Test
+    void preCommitRespeitaCaminhosIsentosDoRepositorio() throws Exception {
+        Path repo = criarRepositorio("pc-isento");
+        assertEquals(0, git(repo, "config", "--local", "--add", "hooks.termosIaIgnorar", "hooks/_bloquear_*").exitCode());
+        Files.createDirectories(repo.resolve("hooks"));
+        Files.writeString(repo.resolve("hooks/_bloquear_exemplo"), "grep -E 'opus|sonnet'\n");
+        Files.writeString(repo.resolve("outro.txt"), "Sonnet\n");
+        assertEquals(0, git(repo, "add", "hooks/_bloquear_exemplo").exitCode());
+
+        Result isento = git(repo, "commit", "-m", "chore: hook");
+        assertEquals(0, isento.exitCode(), isento.output());
+
+        assertEquals(0, git(repo, "add", "outro.txt").exitCode());
+        Result bloqueado = git(repo, "commit", "-m", "chore: outro");
+        assertNotEquals(0, bloqueado.exitCode(), bloqueado.output());
+    }
+
+    @Test
     void instaladorEIdempotenteEConfiguraHooksGlobaisIsolados() throws Exception {
         Path fakeHome = Files.createDirectory(tempDir.resolve("home"));
         Path xdgHome = Files.createDirectory(fakeHome.resolve("config"));

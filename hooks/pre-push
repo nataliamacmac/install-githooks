@@ -8,11 +8,16 @@ ENTRADA=$(mktemp)
 trap 'rm -f "$ENTRADA"' EXIT HUP INT TERM
 cat > "$ENTRADA"
 
+# Commit que ja esta numa ref deste remoto nao sobe pela primeira vez: o termo, se houver, ja foi
+# enviado antes. Sem este corte, um push da main trazia de volta a lista inteira dos commits que a
+# branch de trabalho ja tinha enviado, e o hook recusava mensagem antiga.
+REMOTO="$1"
+
 listar_commits() {
   if [ -n "$EU" ]; then
-    git rev-list --fixed-strings --committer="<$EU>" "$@"
+    git rev-list --fixed-strings --committer="<$EU>" "$@" --not --remotes="$REMOTO"
   else
-    git rev-list "$@"
+    git rev-list "$@" --not --remotes="$REMOTO"
   fi
 }
 

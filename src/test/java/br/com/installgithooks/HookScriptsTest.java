@@ -84,6 +84,54 @@ class HookScriptsTest {
     }
 
     @Test
+    void prePushNaoReconfereCommitQueJaEstaNoRemoto() throws Exception {
+        Path repo = criarRepositorio("push-ja-no-remoto");
+        String base = git(repo, "rev-parse", "HEAD").output().trim();
+        String tree = git(repo, "rev-parse", "HEAD^{tree}").output().trim();
+        // commit antigo com o termo, que ja foi enviado a outra branch do mesmo remoto
+        String antigo = git(repo, "commit-tree", tree, "-p", base, "-m", TERMO).output().trim();
+        assertEquals(0, git(repo, "update-ref", "refs/remotes/origin/desenvolvimento", antigo).exitCode());
+
+        Result pushHook = executar(repo,
+                "refs/heads/main " + antigo + " refs/heads/main " + base + "\n",
+                Map.of(), BASH, HOOKS.resolve("pre-push").toString(), "origin", "https://example.invalid/repo");
+
+        assertEquals(0, pushHook.exitCode(), pushHook.output());
+    }
+
+    @Test
+    void prePushBloqueiaCommitNovoComTermoMesmoComHistoricoJaEnviado() throws Exception {
+        Path repo = criarRepositorio("push-novo-com-termo");
+        String base = git(repo, "rev-parse", "HEAD").output().trim();
+        String tree = git(repo, "rev-parse", "HEAD^{tree}").output().trim();
+        String antigo = git(repo, "commit-tree", tree, "-p", base, "-m", "feat: ajuste antigo").output().trim();
+        assertEquals(0, git(repo, "update-ref", "refs/remotes/origin/desenvolvimento", antigo).exitCode());
+        String novo = git(repo, "commit-tree", tree, "-p", antigo, "-m", TERMO).output().trim();
+
+        Result pushHook = executar(repo,
+                "refs/heads/main " + novo + " refs/heads/main " + base + "\n",
+                Map.of(), BASH, HOOKS.resolve("pre-push").toString(), "origin", "https://example.invalid/repo");
+
+        assertNotEquals(0, pushHook.exitCode(), pushHook.output());
+    }
+
+    @Test
+    void prePushBloqueiaTermoJaEnviadoSoParaOutroRemoto() throws Exception {
+        Path repo = criarRepositorio("push-outro-remoto");
+        String base = git(repo, "rev-parse", "HEAD").output().trim();
+        String tree = git(repo, "rev-parse", "HEAD^{tree}").output().trim();
+        String antigo = git(repo, "commit-tree", tree, "-p", base, "-m", TERMO).output().trim();
+        // o commit esta so no remoto "origin"; o push agora vai para o remoto "interno"
+        assertEquals(0, git(repo, "update-ref", "refs/remotes/origin/desenvolvimento", antigo).exitCode());
+
+        Result pushHook = executar(repo,
+                "refs/heads/main " + antigo + " refs/heads/main " + base + "\n",
+                Map.of(), BASH, HOOKS.resolve("pre-push").toString(), "interno", "https://example.invalid/outro");
+
+        assertNotEquals(0, pushHook.exitCode(), pushHook.output());
+    }
+
+    @Test
     void amendProprioComTermoEBloqueadoMesmoComNoVerify() throws Exception {
         Path repo = criarRepositorio("amend");
         String headAntes = head(repo);

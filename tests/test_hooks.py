@@ -876,8 +876,10 @@ class HookScriptsTest(unittest.TestCase):
         ambiente.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(self.global_vazio),
                          "XDG_CONFIG_HOME": str(self.xdg_vazio)})
         ambiente.update(env)
+        # Sessão própria: sem terminal de controle, o /dev/tty não abre e nenhum script para esperando confirmação,
+        # nem quando a suíte roda num terminal.
         processo = subprocess.run(list(comando), cwd=pasta, env=ambiente, input=(entrada or "").encode(),
-                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
         return Resultado(processo.returncode, processo.stdout.decode("utf-8", errors="replace"))
 
 

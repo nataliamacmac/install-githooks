@@ -28,10 +28,10 @@ git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR > "$LIS
 while IFS= read -r ARQUIVO; do
   [ -z "$ARQUIVO" ] && continue
   ignorado "$ARQUIVO" && continue
-  SAIDA=$(printf '%s\n' "$ARQUIVO" | "$HOOK_DIR/_bloquear_termos_ia_conteudo" "nome de arquivo ($ARQUIVO)") || { printf '%s\n' "$SAIDA"; FALHA=1; }
+  SAIDA=$(printf '%s\n' "$ARQUIVO" | "$HOOK_DIR/_bloquear_termos_ia_conteudo" "nome de arquivo ($ARQUIVO)" "$ARQUIVO") || { printf '%s\n' "$SAIDA"; FALHA=1; }
   # Arquivo movido: inclui o caminho antigo no diff para o git parear a renomeacao e mostrar so o que mudou.
   ANTIGO=$(git -c core.quotePath=false diff --cached -M --name-status --diff-filter=R | awk -F '\t' -v n="$ARQUIVO" '$3 == n { print $2 }')
-  SAIDA=$(git diff --cached --no-color -U0 -M --diff-filter=ACMR -- "$ARQUIVO" ${ANTIGO:+"$ANTIGO"} | grep '^+' | grep -v '^+++ ' | sed 's/^+//' | "$HOOK_DIR/_bloquear_termos_ia_conteudo" "conteudo adicionado em $ARQUIVO") || { printf '%s\n' "$SAIDA"; FALHA=1; }
+  SAIDA=$(git diff --cached --no-color -U0 -M --diff-filter=ACMR -- "$ARQUIVO" ${ANTIGO:+"$ANTIGO"} | grep '^+' | grep -v '^+++ ' | sed 's/^+//' | "$HOOK_DIR/_bloquear_termos_ia_conteudo" "conteudo adicionado em $ARQUIVO" "$ARQUIVO") || { printf '%s\n' "$SAIDA"; FALHA=1; }
 done < "$LISTA"
 
 if [ "$FALHA" -ne 0 ]; then

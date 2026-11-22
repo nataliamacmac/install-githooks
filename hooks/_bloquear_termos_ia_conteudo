@@ -1,13 +1,25 @@
 #!/bin/sh
 # install-githooks managed
 #
-# Termos de IA para nomes de arquivo e conteudo versionado (usado pelo pre-commit). A lista e mais estreita que a de
-# mensagens e nomes de referencia (_bloquear_termos_ia): fica de fora o que e palavra comum em codigo e texto
-# (cursor, codex, grok, gemini, devin, windsurf e "gpt" isolado), para nao bloquear commits legitimos.
+# Termos de IA para nomes de arquivo e conteudo versionado (usado pelo pre-commit). Uso: _bloquear_termos_ia_conteudo
+# CONTEXTO [ARQUIVO]. Os termos ficam em dois niveis:
+# - fortes, barrados em qualquer arquivo: claude, anthropic, openai, chatgpt, gpt-N, copilot, subagente;
+# - ambiguos, barrados so em arquivo de prosa (.md, .markdown, .mdx, .txt, .rst, .adoc): cursor, codex, grok, gemini,
+#   devin, windsurf, opus, sonnet, haiku. Em codigo eles sao palavra comum (cursor: pointer no CSS, CURSOR no SQL).
+# "gpt" isolado fica de fora. A checagem de mensagens e nomes de referencia e outra (_bloquear_termos_ia).
 
 CONTEXTO="$1"
-BLOQUEIO=$(LC_ALL=C grep -nEi \
-  -e '(^|[^[:alnum:]])(claude([[:space:]_-]*code)?|anthropic|openai|chat[[:space:]_-]*gpt|gpt[[:space:]_-]*[0-9][[:alnum:].]*|copilot|opus|sonnet|haiku|sub[[:space:]_-]*agent(e|es|s)?)([^[:alnum:]]|$)')
+ARQUIVO="$2"
+FORTES='claude([[:space:]_-]*code)?|anthropic|openai|chat[[:space:]_-]*gpt|gpt[[:space:]_-]*[0-9][[:alnum:].]*|copilot|sub[[:space:]_-]*agent(e|es|s)?'
+AMBIGUOS='cursor|codex|grok|gemini|devin|windsurf|opus|sonnet|haiku'
+
+TERMOS="$FORTES"
+case "$ARQUIVO" in
+  *.[Mm][Dd]|*.[Mm][Aa][Rr][Kk][Dd][Oo][Ww][Nn]|*.[Mm][Dd][Xx]|*.[Tt][Xx][Tt]|*.[Rr][Ss][Tt]|*.[Aa][Dd][Oo][Cc])
+    TERMOS="$FORTES|$AMBIGUOS" ;;
+esac
+
+BLOQUEIO=$(LC_ALL=C grep -nEi -e "(^|[^[:alnum:]])($TERMOS)([^[:alnum:]]|\$)")
 
 if [ -n "$BLOQUEIO" ]; then
   echo "Git bloqueado: termo de IA proibido em $CONTEXTO."

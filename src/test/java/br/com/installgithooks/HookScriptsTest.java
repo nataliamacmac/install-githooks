@@ -347,6 +347,63 @@ class HookScriptsTest {
     }
 
     @Test
+    void preCommitPermiteUsoTecnicoDeTermoAmbiguoEmCodigo() throws Exception {
+        Path repo = criarRepositorio("pc-codigo");
+        Map<String, String> arquivos = Map.of(
+                "estilo.scss", ".botao {\n  cursor: pointer;\n}\n",
+                "Lista.vue", "<template><div style=\"cursor: pointer\">Haiku</div></template>\n",
+                "consulta.sql", "DECLARE c CURSOR FOR SELECT opus, sonnet FROM obras;\n",
+                "pagina.html", "<p>Sonnet 18 e o codex de leis</p>\n",
+                "cursor.ts", "export const cursor = 1;\n");
+        for (Map.Entry<String, String> arquivo : arquivos.entrySet()) {
+            Files.writeString(repo.resolve(arquivo.getKey()), arquivo.getValue());
+            assertEquals(0, git(repo, "add", arquivo.getKey()).exitCode());
+        }
+
+        Result commit = git(repo, "commit", "-m", "feat: tela");
+
+        assertEquals(0, commit.exitCode(), commit.output());
+    }
+
+    @Test
+    void preCommitBloqueiaTermoAmbiguoEmTextoDeProsa() throws Exception {
+        Path repo = criarRepositorio("pc-prosa");
+        for (String[] caso : List.of(
+                new String[] {"nota.md", "Feito no editor Cursor.\n"},
+                new String[] {"leia.txt", "revisado com o Gemini\n"},
+                new String[] {"guia.adoc", "rodado no Codex\n"},
+                new String[] {"notas-cursor.md", "conteudo neutro\n"})) {
+            Files.writeString(repo.resolve(caso[0]), caso[1]);
+            assertEquals(0, git(repo, "add", caso[0]).exitCode());
+
+            Result commit = git(repo, "commit", "-m", "docs: nota");
+
+            assertNotEquals(0, commit.exitCode(), caso[0] + " -> " + commit.output());
+            assertEquals(0, git(repo, "reset", "-q").exitCode());
+            Files.delete(repo.resolve(caso[0]));
+        }
+    }
+
+    @Test
+    void preCommitBloqueiaTermoForteMesmoEmCodigo() throws Exception {
+        Path repo = criarRepositorio("pc-forte");
+        for (String[] caso : List.of(
+                new String[] {"estilo.scss", "/* gerado pelo Copilot */\n"},
+                new String[] {"consulta.sql", "-- escrito com Claude Code\n"},
+                new String[] {"Lista.vue", "<!-- feito por subagentes -->\n"})) {
+            Files.writeString(repo.resolve(caso[0]), caso[1]);
+            assertEquals(0, git(repo, "add", caso[0]).exitCode());
+
+            Result commit = git(repo, "commit", "-m", "feat: tela");
+
+            assertNotEquals(0, commit.exitCode(), caso[0] + " -> " + commit.output());
+            assertTrue(commit.output().contains("conteudo adicionado em " + caso[0]), commit.output());
+            assertEquals(0, git(repo, "reset", "-q").exitCode());
+            Files.delete(repo.resolve(caso[0]));
+        }
+    }
+
+    @Test
     void preCommitSoVeLinhasAdicionadasNaoAsRemovidas() throws Exception {
         Path repo = criarRepositorio("pc-remocao");
         Files.writeString(repo.resolve("nota.md"), "linha antiga\n");

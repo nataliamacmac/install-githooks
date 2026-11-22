@@ -13,6 +13,19 @@ As travas verificam mensagens e coautoria de commits, nomes de referências e co
 
 `reference-transaction` e `pre-push` só verificam a mensagem de commits cujo committer é a identidade que o Git usaria para um commit novo naquele repositório (`git var GIT_COMMITTER_IDENT`). Commits de terceiros recebidos por clone, fetch ou pull passam. As referências que só espelham o remoto (`refs/remotes/*`, `FETCH_HEAD` e `ORIG_HEAD`) não são verificadas. Se o Git não conseguir determinar a identidade, todos os commits são verificados.
 
+O `pre-commit` verifica o nome de cada arquivo do commit e as linhas adicionadas. Ele usa dois níveis de termos de IA, e a lista de cada nível está em `hooks/_bloquear_termos_ia_conteudo`:
+
+- Termos fortes: nomes de empresa, de produto e de assistente de IA que não têm outro uso em código. O hook barra esses termos em qualquer arquivo.
+- Termos ambíguos: nomes de ferramenta e de modelo de IA que também são palavras comuns em código, como a propriedade CSS do ponteiro do mouse ou o cursor do SQL. O hook barra esses termos só em arquivo de texto (`.md`, `.markdown`, `.mdx`, `.txt`, `.rst` e `.adoc`).
+
+Por isso a propriedade CSS do ponteiro passa num `.scss` ou num `.vue`, mas o nome do editor de IA homônimo é barrado num `.md`. A extensão do arquivo decide o nível, tanto para o nome quanto para o conteúdo. A checagem da mensagem de commit não muda: ela barra os dois níveis em qualquer mensagem.
+
+Para isentar um caminho num repositório, use um padrão de caminho:
+
+```bash
+git config --local --add hooks.termosIaIgnorar 'caminho/ou/padrao/*'
+```
+
 Para procurar configurações locais que sobrepõem os hooks globais:
 
 ```bash

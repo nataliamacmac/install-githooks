@@ -70,6 +70,22 @@ Para destravar, execute `~/.config/git/somente-leitura remover <entrada>` no ter
 
 A trava fica na conta do usuário da máquina. Quem muda a configuração do Git de propósito, por exemplo com `git -c core.hooksPath=/dev/null` e uma regra `pushInsteadOf` mais longa, passa por ela. A garantia contra isso é a permissão no servidor: um token só de leitura ou um papel só de leitura no repositório.
 
+## Trava git do agente de IA
+
+Os hooks do Git não veem `git fetch`, `git ls-remote` nem o `gh`, porque o Git não chama hook nessas operações. Para cobrir esses casos quando um agente de IA executa comandos, o projeto tem o `agentes/git_guard.py`. Ele é um hook PreToolUse do agente: antes de cada comando Bash, ele confere os comandos `git` e `gh`.
+
+- Comandos que só leem passam direto, por exemplo `git status`, `git log`, `git tag --sort=-creatordate` e `gh pr view`.
+- Comandos que gravam no repositório, que acessam o remoto ou que o hook não conhece pedem a sua aprovação.
+
+O `install.sh` instala a trava com o script `agentes/instalar`:
+
+1. O script procura a pasta de configuração do agente na sua pasta pessoal, ou na pasta que a variável de ambiente do agente indica. Os detalhes estão no cabeçalho de `agentes/instalar`.
+2. Se a pasta não existe, o agente não está instalado e nada muda.
+3. Se a pasta existe, o script copia o hook para a subpasta `hooks` e registra uma única entrada no `settings.json`. As outras configurações do arquivo continuam como estão.
+4. Antes de gravar, o script faz um backup do `settings.json`. Se o arquivo não é um JSON válido, o script não grava nada e avisa.
+
+A trava precisa de Python 3.8 ou superior. O `install.sh` testa `python3`, `python` e `py`, nessa ordem, e grava no registro o primeiro que funciona. Assim o mesmo comando roda no macOS, no Linux e no Git Bash do Windows. Sem Python, os hooks do Git são instalados e a trava do agente fica de fora, com um aviso.
+
 ## Limites
 
 Hooks locais não conseguem validar título ou descrição de PR criado pelo site ou API. O `pre-push` valida branches e mensagens dos commits próprios; validação dos metadados do PR precisa ser configurada no provedor Git.

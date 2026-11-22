@@ -775,7 +775,8 @@ class HookScriptsTest(unittest.TestCase):
 
     def executar(self, pasta, entrada, env, *comando):
         ambiente = {chave: valor for chave, valor in os.environ.items()
-                    if chave != "EMAIL" and not chave.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))}
+                    if chave not in ("EMAIL", "CLAUDE_CONFIG_DIR")
+                    and not chave.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_"))}
         ambiente.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(self.global_vazio),
                          "XDG_CONFIG_HOME": str(self.xdg_vazio)})
         ambiente.update(env)

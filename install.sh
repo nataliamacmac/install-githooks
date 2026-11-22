@@ -78,6 +78,21 @@ else
   printf 'Repos só leitura: nenhuma lista. Para travar um repo, execute dentro dele: %s adicionar\n' "$SOMENTE_LEITURA_TARGET"
 fi
 
+# Trava git do agente de IA (agentes/git_guard.py). No Windows, "python3" pode ser um atalho que não executa nada,
+# por isso cada nome é testado antes de ser usado.
+python_cmd=""
+for candidate in python3 python py; do
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 8))' >/dev/null 2>&1; then
+    python_cmd="$candidate"
+    break
+  fi
+done
+if [[ -z "$python_cmd" ]]; then
+  printf 'git_guard: Python 3.8 ou superior não encontrado, a trava git do agente não foi instalada.\n'
+elif ! GITHOOKS_HOME="$USER_HOME" "$python_cmd" "$PROJECT_DIR/agentes/instalar" "$python_cmd"; then
+  printf 'git_guard: a instalação falhou. Os hooks do Git foram instalados mesmo assim.\n'
+fi
+
 printf 'Hooks instalados em: %s\n' "$HOOK_DIR"
 printf 'Configuração global: %s\n' "$(git config --global --get core.hooksPath)"
 if [[ "$SCAN_NOW" == true ]]; then

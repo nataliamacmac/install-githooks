@@ -7,6 +7,8 @@ USER_HOME="${GITHOOKS_HOME:-${HOME:?HOME precisa estar definido}}"
 CONFIG_ROOT="${XDG_CONFIG_HOME:-$USER_HOME/.config}/git"
 HOOK_DIR="$CONFIG_ROOT/hooks"
 SCAN_TARGET="$CONFIG_ROOT/scan-custom-hooks.sh"
+SOMENTE_LEITURA_TARGET="$CONFIG_ROOT/somente-leitura"
+LISTA_SOMENTE_LEITURA="$CONFIG_ROOT/somente-leitura.lista"
 SCAN_NOW=false
 
 case "${1:-}" in
@@ -51,8 +53,9 @@ for source in "$PROJECT_DIR"/hooks/*; do
   install_file "$source" "$HOOK_DIR/$(basename "$source")"
 done
 install_file "$PROJECT_DIR/scripts/scan-custom-hooks.sh" "$SCAN_TARGET"
+install_file "$PROJECT_DIR/scripts/somente-leitura" "$SOMENTE_LEITURA_TARGET"
 
-delegated_hooks="applypatch-msg pre-applypatch post-applypatch pre-commit post-commit pre-rebase post-checkout post-merge post-rewrite pre-auto-gc post-index-change fsmonitor-watchman update post-update pre-receive post-receive proc-receive push-to-checkout sendemail-validate"
+delegated_hooks="applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit post-commit pre-rebase post-checkout post-merge post-rewrite pre-auto-gc post-index-change fsmonitor-watchman update post-update pre-receive post-receive proc-receive push-to-checkout sendemail-validate"
 for hook in $delegated_hooks; do
   target="$HOOK_DIR/$hook"
   if [[ -e "$target" ]] && grep -q 'install-githooks managed' "$target" 2>/dev/null; then continue; fi
@@ -66,6 +69,13 @@ previous_path="$(git config --global --get core.hooksPath 2>/dev/null || true)"
 if [[ "$previous_path" != "$HOOK_DIR" ]]; then
   if [[ -n "$previous_path" ]]; then printf 'Substituindo core.hooksPath global anterior: %s\n' "$previous_path"; fi
   git config --global core.hooksPath "$HOOK_DIR"
+fi
+
+if [[ -f "$LISTA_SOMENTE_LEITURA" ]]; then
+  XDG_CONFIG_HOME="$(dirname "$CONFIG_ROOT")" "$SOMENTE_LEITURA_TARGET" aplicar
+  printf 'Repos só leitura: regras aplicadas a partir de %s\n' "$LISTA_SOMENTE_LEITURA"
+else
+  printf 'Repos só leitura: nenhuma lista. Para travar um repo, execute dentro dele: %s adicionar\n' "$SOMENTE_LEITURA_TARGET"
 fi
 
 printf 'Hooks instalados em: %s\n' "$HOOK_DIR"

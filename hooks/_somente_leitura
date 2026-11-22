@@ -1,0 +1,50 @@
+#!/bin/sh
+# install-githooks managed
+#
+# Diz se o repositório atual está na lista particular de repos só leitura desta máquina.
+# A lista fica fora de qualquer repositório, em ~/.config/git/somente-leitura.lista, com uma entrada
+# por linha: "url:<prefixo da URL do remoto>" ou "pasta:<caminho absoluto>".
+# Uso: _somente_leitura [URL extra]. Sai com 0 e escreve a entrada quando o repo está travado.
+
+LISTA="${XDG_CONFIG_HOME:-$HOME/.config}/git/somente-leitura.lista"
+[ -f "$LISTA" ] || exit 1
+
+sem_credencial() {
+  printf '%s\n' "$1" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@#\1#'
+}
+
+# O worktree aponta para o repo principal: a trava do principal vale nele também.
+COMUM=$(git rev-parse --git-common-dir 2>/dev/null) || exit 1
+COMUM=$(cd "$COMUM" 2>/dev/null && pwd -P) || exit 1
+case "$COMUM" in
+  */.git) REPO=${COMUM%/.git} ;;
+  *) REPO=$COMUM ;;
+esac
+
+URLS=$(git config --get-regexp '^remote\..*\.(url|pushurl)$' 2>/dev/null | cut -d' ' -f2-)
+if [ -n "$1" ]; then
+  URLS=$(printf '%s\n%s\n' "$URLS" "$1")
+fi
+URLS=$(printf '%s\n' "$URLS" | while IFS= read -r URL; do [ -n "$URL" ] && sem_credencial "$URL"; done)
+
+while IFS= read -r LINHA || [ -n "$LINHA" ]; do
+  ENTRADA=$(printf '%s' "$LINHA" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  case "$ENTRADA" in
+    url:?*)
+      PREFIXO=${ENTRADA#url:}
+      if printf '%s\n' "$URLS" | PREFIXO="$PREFIXO" awk 'index($0, ENVIRON["PREFIXO"]) == 1 { achou = 1 } END { exit !achou }'; then
+        printf '%s\n' "$ENTRADA"
+        exit 0
+      fi
+      ;;
+    pasta:?*)
+      PASTA=${ENTRADA#pasta:}
+      PASTA=$(cd "$PASTA" 2>/dev/null && pwd -P) || continue
+      case "$REPO/" in
+        "$PASTA"/*) printf '%s\n' "$ENTRADA"; exit 0 ;;
+      esac
+      ;;
+  esac
+done < "$LISTA"
+
+exit 1

@@ -1,13 +1,45 @@
 #!/bin/sh
 # install-githooks managed
+#
+# Roda os hooks do próprio repo depois dos hooks globais, nesta ordem, parando na primeira falha:
+# 1. o hook versionado, na pasta da chave local hooks.versionado (ex.: .githooks);
+# 2. o hook em <git-common-dir>/hooks.
+# Sem a chave, o hook versionado não roda: clone de terceiro não executa código nesta máquina.
 
 NOME="$1"
 shift
 GIT_COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null)"
 HOOK_LOCAL="$GIT_COMMON_DIR/hooks/$NOME"
+[ -n "$GIT_COMMON_DIR" ] && [ -x "$HOOK_LOCAL" ] && [ "$HOOK_LOCAL" != "$0" ] || HOOK_LOCAL=
 
-if [ -n "$GIT_COMMON_DIR" ] && [ -x "$HOOK_LOCAL" ] && [ "$HOOK_LOCAL" != "$0" ]; then
-  exec "$HOOK_LOCAL" "$@"
+HOOK_VERSIONADO=
+PASTA_VERSIONADA="$(git config --local --get hooks.versionado 2>/dev/null)"
+if [ -n "$PASTA_VERSIONADA" ]; then
+  case "$PASTA_VERSIONADA" in
+    /*) ;;
+    *) PASTA_VERSIONADA="$(git rev-parse --show-toplevel 2>/dev/null)/$PASTA_VERSIONADA" ;;
+  esac
+  CANDIDATO="$PASTA_VERSIONADA/$NOME"
+  if [ -x "$CANDIDATO" ] && [ "$(cd "$(dirname "$CANDIDATO")" && pwd -P)" != "$(cd "$(dirname "$0")" && pwd -P)" ]; then
+    HOOK_VERSIONADO="$CANDIDATO"
+  fi
 fi
 
-exit 0
+if [ -z "$HOOK_VERSIONADO" ]; then
+  [ -n "$HOOK_LOCAL" ] && exec "$HOOK_LOCAL" "$@"
+  exit 0
+fi
+if [ -z "$HOOK_LOCAL" ]; then
+  exec "$HOOK_VERSIONADO" "$@"
+fi
+
+# Os dois existem: a entrada padrão vai para os dois. Terminal não é guardado, para não travar à espera.
+if [ -t 0 ]; then
+  "$HOOK_VERSIONADO" "$@" || exit $?
+  exec "$HOOK_LOCAL" "$@"
+fi
+ENTRADA=$(mktemp)
+trap 'rm -f "$ENTRADA"' EXIT HUP INT TERM
+cat > "$ENTRADA"
+"$HOOK_VERSIONADO" "$@" < "$ENTRADA" || exit $?
+"$HOOK_LOCAL" "$@" < "$ENTRADA"

@@ -24,6 +24,7 @@ class HookScriptsTest {
     private static final Path HOOKS = PROJECT.resolve("hooks");
     private static final String BASH = findBash();
     private static final Path GLOBAL_VAZIO = criarGlobalVazio();
+    private static final Path XDG_VAZIO = criarXdgVazio();
     private static final String TERMO = "feat: adicionar suporte a Claude Code";
     private static final String OID_ZERO = "0000000000000000000000000000000000000000";
 
@@ -435,6 +436,308 @@ class HookScriptsTest {
         }
     }
 
+    @Test
+    void semListaSomenteLeituraPushContinuaPermitido() throws Exception {
+        Path origem = criarRepositorioBare("origem-livre");
+        Path repo = clonar(origem, "livre");
+        Map<String, String> env = configurarLista();
+        assertEquals(0, gitComEnv(repo, env, "commit", "--allow-empty", "-m", "commit livre").exitCode());
+
+        Result push = gitComEnv(repo, env, "push", "origin", "main");
+
+        assertEquals(0, push.exitCode(), push.output());
+    }
+
+    @Test
+    void pushParaUrlDaListaERecusadoPeloHook() throws Exception {
+        Path origem = criarRepositorioBare("origem-trava-url");
+        Path repo = clonar(origem, "trava-url");
+        Map<String, String> env = configurarLista("url:" + origem);
+
+        Result push = gitComEnv(repo, env, "push", "origin", "HEAD:refs/heads/nova");
+
+        assertNotEquals(0, push.exitCode(), push.output());
+        assertTrue(push.output().contains("só leitura"), push.output());
+        assertNotEquals(0, git(origem, "rev-parse", "--verify", "refs/heads/nova").exitCode());
+    }
+
+    @Test
+    void pushInsteadOfBloqueiaEnvioMesmoSemHooksEPreservaFetch() throws Exception {
+        Path origem = criarRepositorioBare("origem-insteadof");
+        Path repo = clonar(origem, "insteadof");
+        Map<String, String> env = configurarLista("url:" + origem);
+        Result aplicar = somenteLeitura(repo, env, "aplicar");
+        assertEquals(0, aplicar.exitCode(), aplicar.output());
+
+        String pushUrl = gitComEnv(repo, env, "remote", "get-url", "--push", "origin").output().trim();
+        Result push = gitComEnv(repo, env, "-c", "core.hooksPath=/dev/null", "push", "--no-verify", "origin", "HEAD:refs/heads/nova");
+        Result fetch = gitComEnv(repo, env, "fetch", "origin");
+
+        assertTrue(pushUrl.startsWith("somente-leitura://bloqueado/"), pushUrl);
+        assertNotEquals(0, push.exitCode(), push.output());
+        assertEquals(0, fetch.exitCode(), fetch.output());
+    }
+
+    @Test
+    void repoEmPastaDaListaNaoFazCommitNemPush() throws Exception {
+        Path origem = criarRepositorioBare("origem-pasta");
+        Path repo = clonar(origem, "pasta-travada");
+        Map<String, String> env = configurarLista("pasta:" + repo.toRealPath());
+        String headAntes = head(repo);
+
+        Result commit = gitComEnv(repo, env, "commit", "--allow-empty", "--no-verify", "-m", "commit local");
+        Result push = gitComEnv(repo, env, "push", "origin", "HEAD:refs/heads/nova");
+
+        assertNotEquals(0, commit.exitCode(), commit.output());
+        assertTrue(commit.output().contains("só leitura"), commit.output());
+        assertEquals(headAntes, head(repo));
+        assertNotEquals(0, push.exitCode(), push.output());
+        assertNotEquals(0, git(origem, "rev-parse", "--verify", "refs/heads/nova").exitCode());
+    }
+
+    @Test
+    void repoTravadoRecusaStashResetEApagarBranch() throws Exception {
+        Path origem = criarRepositorioBare("origem-destrutivo");
+        Path repo = clonar(origem, "destrutivo");
+        Map<String, String> env = configurarLista("url:" + origem);
+        String headAntes = head(repo);
+        Files.writeString(repo.resolve("rascunho.txt"), "rascunho\n");
+        assertEquals(0, gitComEnv(repo, env, "add", "rascunho.txt").exitCode());
+
+        Result stash = gitComEnv(repo, env, "stash");
+        Result reset = gitComEnv(repo, env, "reset", "--soft", "HEAD~1");
+        Result apagar = gitComEnv(repo, env, "update-ref", "-d", "refs/heads/main");
+
+        assertNotEquals(0, stash.exitCode(), stash.output());
+        assertNotEquals(0, reset.exitCode(), reset.output());
+        assertNotEquals(0, apagar.exitCode(), apagar.output());
+        assertEquals(headAntes, head(repo));
+    }
+
+    @Test
+    void repoTravadoRecebeFetchPullTagEClone() throws Exception {
+        Path origemTrabalho = criarRepositorio("origem-trabalho");
+        Path origem = tempDir.resolve("origem-recebe.git");
+        assertEquals(0, executar(tempDir, null, Map.of(), "git", "clone", "--bare",
+                origemTrabalho.toString(), origem.toString()).exitCode());
+        Map<String, String> env = configurarLista("url:" + origem);
+        Path repo = tempDir.resolve("recebe");
+        Result clone = executar(tempDir, null, env, "git", "clone",
+                "-c", "core.hooksPath=" + hooksPath(), origem.toString(), repo.toString());
+        assertEquals(0, clone.exitCode(), clone.output());
+
+        assertEquals(0, git(origemTrabalho, "commit", "--allow-empty", "-m", "commit novo no remoto").exitCode());
+        assertEquals(0, git(origemTrabalho, "tag", "v1").exitCode());
+        assertEquals(0, git(origemTrabalho, "push", origem.toString(), "main", "v1").exitCode());
+
+        Result pull = gitComEnv(repo, env, "pull", "--ff-only", "origin", "main");
+        Result tags = gitComEnv(repo, env, "fetch", "--tags", "origin");
+        Result branch = gitComEnv(repo, env, "switch", "-c", "leitura", "origin/main");
+
+        assertEquals(0, pull.exitCode(), pull.output());
+        assertEquals(0, tags.exitCode(), tags.output());
+        assertEquals(0, branch.exitCode(), branch.output());
+        assertEquals(head(origemTrabalho), head(repo));
+    }
+
+    @Test
+    void worktreeDeRepoTravadoNaoFazCommitNemPush() throws Exception {
+        Path origem = criarRepositorioBare("origem-worktree");
+        Path repo = clonar(origem, "principal-travado");
+        Map<String, String> env = configurarLista("pasta:" + repo.toRealPath());
+        Path worktree = tempDir.resolve("wt-travado");
+        Result add = gitComEnv(repo, env, "worktree", "add", "--detach", worktree.toString());
+        assertEquals(0, add.exitCode(), add.output());
+        String headAntes = head(worktree);
+
+        Result commit = gitComEnv(worktree, env, "commit", "--allow-empty", "--no-verify", "-m", "commit no worktree");
+        Result push = gitComEnv(worktree, env, "push", "origin", "HEAD:refs/heads/nova");
+
+        assertNotEquals(0, commit.exitCode(), commit.output());
+        assertEquals(headAntes, head(worktree));
+        assertNotEquals(0, push.exitCode(), push.output());
+    }
+
+    @Test
+    void adicionarSemArgumentoGravaUrlDoOriginSemCredencial() throws Exception {
+        Path repo = criarRepositorio("com-credencial");
+        git(repo, "remote", "add", "origin", "https://usuario:senha-secreta@git.exemplo.com/terceiro/repo.git");
+        Map<String, String> env = configurarLista();
+
+        Result adicionar = somenteLeitura(repo, env, "adicionar");
+        String lista = Files.readString(listaDe(env));
+
+        assertEquals(0, adicionar.exitCode(), adicionar.output());
+        assertTrue(lista.contains("url:https://git.exemplo.com/terceiro/repo.git"), lista);
+        assertFalse(lista.contains("senha-secreta"), lista);
+        assertFalse(adicionar.output().contains("senha-secreta"), adicionar.output());
+    }
+
+    @Test
+    void adicionarAvisaQuandoRepoTemHooksPathLocal() throws Exception {
+        Path repo = criarRepositorio("com-hookspath");
+        git(repo, "remote", "add", "origin", "https://git.exemplo.com/terceiro/proprio.git");
+        Map<String, String> env = configurarLista();
+
+        Result adicionar = somenteLeitura(repo, env, "adicionar");
+
+        assertEquals(0, adicionar.exitCode(), adicionar.output());
+        assertTrue(adicionar.output().contains("core.hooksPath"), adicionar.output());
+    }
+
+    @Test
+    void removerSemTerminalERecusado() throws Exception {
+        Path repo = criarRepositorio("remover");
+        Map<String, String> env = configurarLista("url:https://git.exemplo.com/terceiro/");
+
+        Result remover = somenteLeitura(repo, env, "remover", "url:https://git.exemplo.com/terceiro/");
+
+        assertNotEquals(0, remover.exitCode(), remover.output());
+        assertTrue(Files.readString(listaDe(env)).contains("url:https://git.exemplo.com/terceiro/"));
+    }
+
+    @Test
+    void aplicarNaoDuplicaEApagaRegraDeEntradaRemovida() throws Exception {
+        Path repo = criarRepositorio("aplicar");
+        Map<String, String> env = configurarLista("url:https://git.exemplo.com/a/", "url:https://git.exemplo.com/b/");
+
+        assertEquals(0, somenteLeitura(repo, env, "aplicar").exitCode());
+        assertEquals(0, somenteLeitura(repo, env, "aplicar").exitCode());
+        assertEquals(2, regrasPushInsteadOf(repo, env).size());
+
+        Files.writeString(listaDe(env), "url:https://git.exemplo.com/a/\n");
+        assertEquals(0, somenteLeitura(repo, env, "aplicar").exitCode());
+        assertEquals(List.of("https://git.exemplo.com/a/"), regrasPushInsteadOf(repo, env));
+    }
+
+    @Test
+    void instaladorAplicaListaExistenteSemAlterarLista() throws Exception {
+        Path fakeHome = Files.createDirectory(tempDir.resolve("home-lista"));
+        Path xdgHome = Files.createDirectories(fakeHome.resolve("config/git"));
+        Path globalConfig = tempDir.resolve("gitconfig-lista");
+        String conteudo = "# lista particular\nurl:https://git.exemplo.com/terceiro/\n";
+        Files.writeString(xdgHome.resolve("somente-leitura.lista"), conteudo);
+        Map<String, String> env = Map.of(
+                "GITHOOKS_HOME", fakeHome.toString(),
+                "XDG_CONFIG_HOME", xdgHome.getParent().toString(),
+                "GIT_CONFIG_GLOBAL", globalConfig.toString());
+
+        assertEquals(0, executar(PROJECT, null, env, BASH, PROJECT.resolve("install.sh").toString()).exitCode());
+        Result segunda = executar(PROJECT, null, env, BASH, PROJECT.resolve("install.sh").toString());
+
+        assertEquals(0, segunda.exitCode(), segunda.output());
+        assertEquals(conteudo, Files.readString(xdgHome.resolve("somente-leitura.lista")));
+        assertTrue(Files.isExecutable(xdgHome.resolve("somente-leitura")));
+        Result regras = executar(PROJECT, null, env, "git", "config", "--global", "--get-all",
+                "url.somente-leitura://bloqueado/.pushInsteadOf");
+        assertEquals("https://git.exemplo.com/terceiro/", regras.output().trim());
+    }
+
+    @Test
+    void delegarRodaHookVersionadoDepoisDoGlobal() throws Exception {
+        Path repo = criarRepositorio("versionado");
+        Path marca = tempDir.resolve("versionado-marca.txt");
+        criarHookVersionado(repo, "pre-commit", "echo versionado >> '" + marca + "'");
+        criarHookDoRepo(repo, "pre-commit", "echo git-hooks >> '" + marca + "'");
+        git(repo, "config", "--local", "hooks.versionado", ".githooks");
+
+        Result commit = git(repo, "commit", "--allow-empty", "-m", "commit com hook versionado");
+
+        assertEquals(0, commit.exitCode(), commit.output());
+        assertEquals(List.of("versionado", "git-hooks"), Files.readAllLines(marca));
+    }
+
+    @Test
+    void delegarPassaAMesmaEntradaAoHookVersionado() throws Exception {
+        Path repo = criarRepositorio("versionado-push");
+        Path recebido = tempDir.resolve("versionado-entrada.txt");
+        Path recebidoRepo = tempDir.resolve("repo-entrada.txt");
+        criarHookVersionado(repo, "pre-push", "cat > '" + recebido + "'");
+        criarHookDoRepo(repo, "pre-push", "cat > '" + recebidoRepo + "'");
+        git(repo, "config", "--local", "hooks.versionado", ".githooks");
+
+        Result push = prePush(repo, head(repo));
+
+        assertEquals(0, push.exitCode(), push.output());
+        assertTrue(Files.readString(recebido).contains("refs/heads/nova " + head(repo)));
+        assertEquals(Files.readString(recebido), Files.readString(recebidoRepo));
+    }
+
+    @Test
+    void globalQueRecusaImpedeHookVersionado() throws Exception {
+        Path repo = criarRepositorio("versionado-recusa");
+        Path marca = tempDir.resolve("versionado-recusa.txt");
+        criarHookVersionado(repo, "commit-msg", "echo rodou > '" + marca + "'");
+        git(repo, "config", "--local", "hooks.versionado", ".githooks");
+
+        Result commit = git(repo, "commit", "--allow-empty", "-m", TERMO);
+
+        assertNotEquals(0, commit.exitCode(), commit.output());
+        assertFalse(Files.exists(marca));
+    }
+
+    @Test
+    void hookVersionadoSemChaveNaoRoda() throws Exception {
+        Path repo = criarRepositorio("versionado-sem-chave");
+        Path marca = tempDir.resolve("sem-chave.txt");
+        criarHookVersionado(repo, "pre-commit", "echo rodou > '" + marca + "'");
+
+        Result commit = git(repo, "commit", "--allow-empty", "-m", "commit sem chave");
+
+        assertEquals(0, commit.exitCode(), commit.output());
+        assertFalse(Files.exists(marca));
+    }
+
+    private Map<String, String> configurarLista(String... entradas) throws Exception {
+        Path xdg = Files.createDirectories(tempDir.resolve("xdg-" + System.nanoTime()));
+        Path git = Files.createDirectories(xdg.resolve("git"));
+        Files.writeString(git.resolve("somente-leitura.lista"), String.join("\n", entradas) + "\n");
+        Path global = Files.createFile(xdg.resolve("gitconfig"));
+        return Map.of("XDG_CONFIG_HOME", xdg.toString(), "GIT_CONFIG_GLOBAL", global.toString());
+    }
+
+    private static Path listaDe(Map<String, String> env) {
+        return Path.of(env.get("XDG_CONFIG_HOME"), "git", "somente-leitura.lista");
+    }
+
+    private static Result somenteLeitura(Path repo, Map<String, String> env, String... args) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add(BASH);
+        command.add(PROJECT.resolve("scripts/somente-leitura").toString());
+        command.addAll(List.of(args));
+        return executar(repo, null, env, command.toArray(String[]::new));
+    }
+
+    private static List<String> regrasPushInsteadOf(Path repo, Map<String, String> env) throws Exception {
+        String saida = gitComEnv(repo, env, "config", "--global", "--get-all",
+                "url.somente-leitura://bloqueado/.pushInsteadOf").output().trim();
+        return saida.isEmpty() ? List.of() : List.of(saida.split("\n"));
+    }
+
+    private Path criarRepositorioBare(String nome) throws Exception {
+        Path trabalho = criarRepositorio(nome + "-trabalho");
+        assertEquals(0, git(trabalho, "commit", "--allow-empty", "-m", "segundo commit limpo").exitCode());
+        Path bare = tempDir.resolve(nome + ".git");
+        Result clone = executar(tempDir, null, Map.of(), "git", "clone", "--bare", trabalho.toString(), bare.toString());
+        assertEquals(0, clone.exitCode(), clone.output());
+        return bare;
+    }
+
+    private static void criarHookVersionado(Path repo, String nome, String corpo) throws Exception {
+        Path pasta = Files.createDirectories(repo.resolve(".githooks"));
+        escreverHook(pasta.resolve(nome), corpo);
+    }
+
+    private static void criarHookDoRepo(Path repo, String nome, String corpo) throws Exception {
+        escreverHook(repo.resolve(".git/hooks").resolve(nome), corpo);
+    }
+
+    private static void escreverHook(Path arquivo, String corpo) throws Exception {
+        Files.createDirectories(arquivo.getParent());
+        Files.writeString(arquivo, "#!/bin/sh\n" + corpo + "\n");
+        assertTrue(arquivo.toFile().setExecutable(true));
+    }
+
     private Path criarRepositorio(String nome) throws Exception {
         Path repo = Files.createDirectory(tempDir.resolve(nome));
         assertEquals(0, git(repo, "init", "-b", "main").exitCode());
@@ -509,6 +812,7 @@ class HookScriptsTest {
         Map<String, String> isolado = new HashMap<>();
         isolado.put("GIT_CONFIG_NOSYSTEM", "1");
         isolado.put("GIT_CONFIG_GLOBAL", GLOBAL_VAZIO.toString());
+        isolado.put("XDG_CONFIG_HOME", XDG_VAZIO.toString());
         isolado.putAll(env);
         ambiente.putAll(isolado);
         Process process = builder.start();
@@ -526,6 +830,16 @@ class HookScriptsTest {
             Path arquivo = Files.createTempFile("gitconfig-vazio", "");
             arquivo.toFile().deleteOnExit();
             return arquivo;
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    private static Path criarXdgVazio() {
+        try {
+            Path pasta = Files.createTempDirectory("xdg-vazio");
+            pasta.toFile().deleteOnExit();
+            return pasta;
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);
         }

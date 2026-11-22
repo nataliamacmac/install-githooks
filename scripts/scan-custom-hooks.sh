@@ -29,6 +29,10 @@ for root in "${roots[@]}"; do
     if [[ -n "$local_path" ]]; then
       found=1
       printf '\nAVISO: configuração local substitui os hooks globais\n  Projeto: %s\n  Origem/valor: %s\n' "$repo" "$local_path"
+      valor="${local_path#*$'\t'}"
+      printf '  Para os globais rodarem antes dos hooks do projeto, migre para hooks.versionado:\n'
+      printf '    git -C %q config --local --unset core.hooksPath\n' "$repo"
+      printf '    git -C %q config --local hooks.versionado %q\n' "$repo" "$valor"
     fi
   done < <(find "$root" -name .git -prune -print0 2>/dev/null)
 done

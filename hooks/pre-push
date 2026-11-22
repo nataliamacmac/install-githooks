@@ -8,6 +8,11 @@ ENTRADA=$(mktemp)
 trap 'rm -f "$ENTRADA"' EXIT HUP INT TERM
 cat > "$ENTRADA"
 
+if TRAVA=$("$HOOK_DIR/_somente_leitura" "$2"); then
+  echo "Git bloqueado: repo só leitura ($TRAVA). Envio recusado."
+  exit 1
+fi
+
 # Commit que ja esta numa ref deste remoto nao sobe pela primeira vez: o termo, se houver, ja foi
 # enviado antes. Sem este corte, um push da main trazia de volta a lista inteira dos commits que a
 # branch de trabalho ja tinha enviado, e o hook recusava mensagem antiga.

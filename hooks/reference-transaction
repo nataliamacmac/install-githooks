@@ -8,6 +8,49 @@ trap 'rm -f "$ENTRADA"' EXIT HUP INT TERM
 cat > "$ENTRADA"
 FALHA=0
 
+if [ "$ESTADO" = prepared ] && TRAVA=$("$HOOK_DIR/_somente_leitura"); then
+  # Repo só leitura: nenhuma ref recebe commit que não veio do remoto, e nenhuma branch some ou volta.
+  # Fetch, pull em fast-forward, clone e branch criada a partir de ref remota continuam passando.
+  PONTAS=$(awk '$3 ~ /^refs\/remotes\// && $2 !~ /^0+$/ { print $2 }' "$ENTRADA")
+  veio_do_remoto() {
+    COMMIT=$(git rev-parse --verify --quiet "$1^{commit}") || return 1
+    [ -n "$(git for-each-ref --count=1 --contains "$COMMIT" refs/remotes)" ] && return 0
+    for PONTA in $PONTAS; do
+      git merge-base --is-ancestor "$COMMIT" "$PONTA" 2>/dev/null && return 0
+    done
+    return 1
+  }
+  while IFS=' ' read -r OID_ANTIGO OID_NOVO REFERENCIA; do
+    case "$REFERENCIA" in
+      ''|refs/remotes/*|FETCH_HEAD|ORIG_HEAD) continue ;;
+    esac
+    case "$OID_NOVO" in
+      ref:*) continue ;;
+      *[!0]*) ;;
+      *)
+        case "$REFERENCIA" in
+          refs/heads/*) echo "Git bloqueado: repo só leitura ($TRAVA). $REFERENCIA não pode ser apagada."; FALHA=1 ;;
+        esac
+        continue
+        ;;
+    esac
+    if ! veio_do_remoto "$OID_NOVO"; then
+      echo "Git bloqueado: repo só leitura ($TRAVA). $REFERENCIA não pode receber commit que não veio do remoto."
+      FALHA=1
+      continue
+    fi
+    case "$REFERENCIA:$OID_ANTIGO" in
+      refs/heads/*:*[!0]*)
+        if ! git merge-base --is-ancestor "$OID_ANTIGO" "$OID_NOVO" 2>/dev/null; then
+          echo "Git bloqueado: repo só leitura ($TRAVA). $REFERENCIA só avança em fast-forward."
+          FALHA=1
+        fi
+        ;;
+    esac
+  done < "$ENTRADA"
+  if [ "$FALHA" -ne 0 ]; then exit 1; fi
+fi
+
 if [ "$ESTADO" = prepared ]; then
   EU=$("$HOOK_DIR/_email_committer")
   while IFS=' ' read -r OID_ANTIGO OID_NOVO REFERENCIA; do

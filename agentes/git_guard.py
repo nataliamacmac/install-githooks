@@ -20,14 +20,22 @@ GIT_OPCAO_COM_VALOR = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "-
 # Subcomandos git que enviam algo para fora da máquina: mudam o remoto ou mandam e-mail.
 GIT_ENVIO = {"push", "send-email"}
 
+# Ações gh que só leem o remoto ou só gravam nesta máquina (clone, checkout, download, config local).
 GH_LEITURA = {
-    "pr": {"view", "list", "status", "diff", "checks"},
+    "pr": {"view", "list", "status", "diff", "checks", "checkout"},
     "issue": {"view", "list", "status"},
-    "repo": {"view", "list"},
-    "run": {"view", "list", "watch"},
+    "repo": {"view", "list", "clone"},
+    "run": {"view", "list", "watch", "download"},
     "workflow": {"view", "list"},
-    "release": {"view", "list"},
-    "auth": {"status"},
+    "release": {"view", "list", "download"},
+    "auth": {"status", "token"},
+    "config": {"get", "list"},
+    "label": {"list"},
+    "gist": {"view", "list"},
+    "secret": {"list"},
+    "variable": {"list", "get"},
+    "cache": {"list"},
+    "extension": {"list"},
     "search": None,  # todo "gh search ..." só lê
     "browse": None,
     "status": None,

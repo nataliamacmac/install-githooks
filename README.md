@@ -74,8 +74,8 @@ A trava fica na conta do usuário da máquina. Quem muda a configuração do Git
 
 Os hooks do Git não veem o `gh`, porque o Git não chama hook nessa ferramenta. Para cobrir o `gh` e o envio ao remoto quando um agente de IA executa comandos, o projeto tem o `agentes/git_guard.py`. Ele é um hook PreToolUse do agente: antes de cada comando Bash, ele confere os comandos `git` e `gh`.
 
-- Comandos que só leem ou que gravam só na máquina passam direto, por exemplo `git status`, `git fetch`, `git pull`, `git commit`, `git reset` e `gh pr view`.
-- Comandos que enviam algo para o remoto pedem a sua aprovação: `git push` (inclusive o que apaga branch ou tag remota), `git send-email` e todo `gh` que altera o remoto, como `gh pr create` e `gh api -X POST`.
+- Comandos que só leem ou que gravam só na máquina passam direto, por exemplo `git status`, `git fetch`, `git pull`, `git commit`, `git reset`, `gh pr view`, `gh auth token` e `gh repo clone`.
+- Comandos que enviam algo para o remoto pedem a sua aprovação: `git push` (inclusive o que apaga branch ou tag remota), `git send-email` e todo `gh` que altera o remoto, como `gh pr create` e `gh api -X POST`. Também pedem aprovação `gh auth login`, `gh auth refresh` e `gh auth logout`, porque eles mudam a credencial do GitHub.
 
 O `install.sh` instala a trava com o script `agentes/instalar`:
 

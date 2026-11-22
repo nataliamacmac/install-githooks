@@ -37,6 +37,17 @@ class GitGuardTest(unittest.TestCase):
                         "git config --local x.y z", "git stash", "git reset --hard", "git remote prune origin"):
             self.assertIsNone(self.guarda.analisar(comando), comando)
 
+    def test_gh_que_so_le_ou_grava_na_maquina_passa(self):
+        for comando in ("gh auth token", "GH_TOKEN=$(gh auth token) python3 x.py", "gh auth status",
+                        "gh config get git_protocol", "gh config list", "gh repo clone o/r", "gh pr checkout 12",
+                        "gh run download 5", "gh release download v1", "gh label list", "gh gist list",
+                        "gh secret list", "gh variable list", "gh cache list", "gh extension list"):
+            self.assertIsNone(self.guarda.analisar(comando), comando)
+
+    def test_gh_auth_que_muda_a_credencial_pede_aprovacao(self):
+        for comando in ("gh auth login", "gh auth refresh -s repo", "gh auth logout"):
+            self.assertIsNotNone(self.guarda.analisar(comando), comando)
+
     def test_comandos_que_enviam_ao_remoto_pedem_aprovacao(self):
         for comando in ("git push origin main", "git push origin --delete velha", "git -C /tmp/x push",
                         "git send-email x.patch", "gh pr create", "gh pr merge 3", "gh repo delete o/r",

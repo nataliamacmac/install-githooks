@@ -28,18 +28,18 @@ class GitGuardTest(unittest.TestCase):
     def setUpClass(cls):
         cls.guarda = carregar_guarda()
 
-    def test_comandos_que_so_leem_passam(self):
+    def test_comandos_que_nao_enviam_nada_ao_remoto_passam(self):
         for comando in ("git status", "git log --oneline -5", "git diff HEAD~1", "git worktree list",
-                        "git branch", "git branch --show-current", "git tag", "git tag --sort=-creatordate",
-                        "git tag -l 'v1*'", "git tag -n5", "git config --get user.email", "git stash list",
+                        "git branch", "git tag -l 'v1*'", "git config --get user.email", "git stash list",
                         "git -C /tmp/x status --short", "gh pr view 12", "gh api repos/o/r/pulls",
-                        "cd x && git log | head -3", "ls -la"):
+                        "cd x && git log | head -3", "ls -la", "git fetch", "git fetch --prune", "git pull",
+                        "git ls-remote origin", "git commit -m x", "git add .", "git branch -D a", "git tag v1.0",
+                        "git config --local x.y z", "git stash", "git reset --hard", "git remote prune origin"):
             self.assertIsNone(self.guarda.analisar(comando), comando)
 
-    def test_comandos_que_gravam_ou_acessam_remoto_pedem_aprovacao(self):
-        for comando in ("git commit -m x", "git add .", "git branch -m a b", "git branch nova", "git tag v1.0",
-                        "git tag -d v1.0", "git push origin main", "git fetch", "git pull", "git ls-remote origin",
-                        "git config --local x.y z", "git stash", "git reset --hard", "gh pr create",
+    def test_comandos_que_enviam_ao_remoto_pedem_aprovacao(self):
+        for comando in ("git push origin main", "git push origin --delete velha", "git -C /tmp/x push",
+                        "git send-email x.patch", "gh pr create", "gh pr merge 3", "gh repo delete o/r",
                         "gh api -X POST repos/o/r/issues", "bash -c 'git push'", "git log && git push"):
             self.assertIsNotNone(self.guarda.analisar(comando), comando)
 
@@ -49,10 +49,11 @@ class GitGuardTest(unittest.TestCase):
         dados = json.loads(saida)["hookSpecificOutput"]
         self.assertEqual("PreToolUse", dados["hookEventName"])
         self.assertEqual("ask", dados["permissionDecision"])
-        self.assertIn("acessa o remoto", dados["permissionDecisionReason"])
+        self.assertIn("envia para o remoto", dados["permissionDecisionReason"])
 
     def test_hook_fica_em_silencio_para_leitura_e_outras_ferramentas(self):
         self.assertEqual("", self.rodar_guarda({"tool_name": "Bash", "tool_input": {"command": "git status"}}))
+        self.assertEqual("", self.rodar_guarda({"tool_name": "Bash", "tool_input": {"command": "git fetch"}}))
         self.assertEqual("", self.rodar_guarda({"tool_name": "Read", "tool_input": {"file_path": "/x"}}))
 
     @staticmethod

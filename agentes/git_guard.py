@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Trava git: hook PreToolUse (Bash) que pede permissão para todo git ou gh que altera algo.
+"""Trava git: hook PreToolUse (Bash) que pede permissão para todo git ou gh que envia algo para o remoto.
 
-Leitura (status, log, diff, show...) passa direto. Escrita, acesso a remoto e
-qualquer subcomando desconhecido devolvem permissionDecision "ask".
+Leitura e escrita local passam direto, inclusive fetch, pull, commit e reset.
+git push, git send-email e todo gh que altera o remoto devolvem permissionDecision "ask".
 Sessão sem ninguém para responder (claude -p, tarefa agendada, dontAsk) nega a chamada.
 """
 import json
@@ -17,28 +17,8 @@ SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
 
 GIT_OPCAO_COM_VALOR = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"}
 
-# Subcomandos que só leem, sem argumento que mude algo.
-GIT_LEITURA = {
-    "status", "log", "diff", "show", "blame", "annotate", "grep", "ls-files", "ls-tree",
-    "rev-parse", "rev-list", "describe", "shortlog", "cat-file", "help", "version",
-    "whatchanged", "difftool", "range-diff", "merge-base", "name-rev", "show-ref",
-    "for-each-ref", "check-ignore", "check-attr", "count-objects", "var", "cherry",
-    "show-branch", "diff-tree", "diff-files", "diff-index", "verify-commit", "verify-tag",
-}
-
-BRANCH_ESCRITA = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "-u", "--delete", "--move", "--copy",
-                  "--force", "--set-upstream-to", "--unset-upstream", "--edit-description", "--track",
-                  "--no-track"}
-BRANCH_LISTA = {"-a", "-r", "-v", "-vv", "-l", "--list", "--all", "--remotes", "--show-current",
-                "--verbose", "--merged", "--no-merged", "--contains", "--no-contains", "--sort",
-                "--format", "--color", "--no-color", "--column", "--no-column", "--points-at"}
-
-# git tag (git-scm.com/docs/git-tag): sem nome de tag, ou com uma opção que implica --list, o comando só lista.
-TAG_ESCRITA = {"-a", "--annotate", "-s", "--sign", "--no-sign", "-u", "--local-user", "-f", "--force", "-d",
-               "--delete", "-m", "--message", "-F", "--file", "-e", "--edit", "--cleanup", "--create-reflog",
-               "--trailer"}
-TAG_LISTA = {"-l", "--list", "-n", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at",
-             "-v", "--verify"}
+# Subcomandos git que enviam algo para fora da máquina: mudam o remoto ou mandam e-mail.
+GIT_ENVIO = {"push", "send-email"}
 
 GH_LEITURA = {
     "pr": {"view", "list", "status", "diff", "checks"},
@@ -106,7 +86,7 @@ def tirar_prefixos(args):
 
 
 def git_altera(args):
-    """args começa depois de 'git'. Devolve o motivo, ou None se só lê."""
+    """args começa depois de 'git'. Devolve o motivo, ou None se o comando não envia nada para o remoto."""
     i = 0
     while i < len(args) and args[i].startswith("-"):
         if args[i] in GIT_OPCAO_COM_VALOR:
@@ -115,59 +95,10 @@ def git_altera(args):
             i += 1
     if i >= len(args):
         return None  # "git" sozinho ou só com opções globais: só mostra ajuda
-    sub, resto = args[i], args[i + 1:]
-
-    if sub in GIT_LEITURA:
-        return None
-    if sub == "branch":
-        opcoes = {r.split("=")[0] for r in resto if r.startswith("-")}
-        posicionais = [r for r in resto if not r.startswith("-")]
-        if not (opcoes & BRANCH_ESCRITA) and (not posicionais or opcoes & BRANCH_LISTA):
-            return None
-        return "git branch que cria, apaga ou renomeia"
-    if sub == "tag":
-        opcoes = {"-n" if re.match(r"^-n[0-9]+$", r) else r.split("=")[0] for r in resto if r.startswith("-")}
-        posicionais = [r for r in resto if not r.startswith("-")]
-        if not (opcoes & TAG_ESCRITA) and (not posicionais or opcoes & TAG_LISTA):
-            return None
-        return "git tag que cria ou apaga"
-    if sub == "remote":
-        if not resto or resto[0] in {"-v", "--verbose", "show", "get-url"}:
-            if resto and resto[0] == "show" and "-n" not in resto:
-                return "git remote show acessa o remoto"
-            return None
-        return "git remote " + resto[0]
-    if sub == "stash":
-        if resto and resto[0] in {"list", "show"}:
-            return None
-        return "git stash altera a árvore de trabalho"
-    if sub == "worktree":
-        if resto and resto[0] == "list":
-            return None
-        return "git worktree altera worktrees"
-    if sub == "config":
-        leitura = {"--get", "--get-all", "--get-regexp", "--list", "-l", "--get-urlmatch", "--show-origin"}
-        if set(resto) & leitura:
-            return None
-        valores = [r for r in resto if not r.startswith("-")]
-        if len(valores) == 1:
-            return None  # git config chave (lê o valor)
-        return "git config grava configuração"
-    if sub == "reflog":
-        if not resto or resto[0] in {"show", "exists"}:
-            return None
-        return "git reflog " + resto[0]
-    if sub == "notes":
-        if not resto or resto[0] in {"list", "show"}:
-            return None
-        return "git notes altera notas"
-    if sub == "submodule":
-        if resto and resto[0] in {"status", "summary"}:
-            return None
-        return "git submodule altera submódulos"
-    if sub in {"fetch", "pull", "push", "ls-remote", "clone", "remote-prune"}:
-        return "git " + sub + " acessa o remoto"
-    return "git " + sub + " altera o repositório"
+    sub = args[i]
+    if sub in GIT_ENVIO:
+        return "git " + sub + " envia para o remoto"
+    return None
 
 
 def gh_altera(args):

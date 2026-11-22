@@ -392,6 +392,18 @@ class AutonomiaDoGitGuardTest(unittest.TestCase):
         decisao, _ = self.decidir("gh pr merge 3", self.projeto)
         self.assertEqual("allow", decisao)
 
+    def test_repo_sem_remoto_em_pasta_da_lista_nao_vira_so_leitura_por_url_de_outro_host(self):
+        sem_remoto = self.temp / "sem-remoto"
+        sem_remoto.mkdir()
+        self.git(sem_remoto, "init", "-q")
+        self.escrever_lista("pasta:" + str(sem_remoto))
+        self.escrever_lista_so_leitura("url:https://git.outro-host.local/")
+        decisao, motivo = self.decidir("git clean -fd", sem_remoto)
+        self.assertEqual("allow", decisao, motivo)
+        self.escrever_lista_so_leitura("pasta:" + str(sem_remoto))
+        decisao, _ = self.decidir("git clean -fd", sem_remoto)
+        self.assertEqual("ask", decisao)
+
     def test_cerquilha_citada_ou_no_meio_da_palavra_nao_abre_comentario(self):
         decisao, _ = self.decidir("git commit -m \"fix #12\" && git push origin b", self.projeto)
         self.assertEqual("allow", decisao)

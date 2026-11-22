@@ -532,8 +532,11 @@ def mexe_na_autonomia(comando):
     return None
 
 
-def git(cwd, *args):
-    """Roda git na pasta e devolve a saída, ou None em qualquer falha."""
+def git(cwd, *args, vazio_se_1=False):
+    """Roda git na pasta e devolve a saída, ou None em qualquer falha.
+
+    Com vazio_se_1, o código 1 devolve "": em git config --get-regexp ele quer dizer que nenhuma chave casou.
+    """
     restante = GIT_PRAZO_TOTAL - (time.monotonic() - INICIO)
     if restante <= 0:
         return None
@@ -542,6 +545,8 @@ def git(cwd, *args):
                                   stderr=subprocess.DEVNULL, timeout=min(GIT_TIMEOUT, restante))
     except (OSError, ValueError, subprocess.SubprocessError):
         return None
+    if processo.returncode == 1 and vazio_se_1:
+        return ""
     if processo.returncode != 0:
         return None
     return processo.stdout.decode("utf-8", "replace")
@@ -597,7 +602,7 @@ def so_leitura(cwd, repo, urls):
                 if (e.startswith("url:") and len(e) > 4) or (e.startswith("pasta:") and len(e) > 6)]
     if not entradas:
         return False
-    config = git(cwd, "config", "--get-regexp", r"^remote\..*\.(url|pushurl)$")
+    config = git(cwd, "config", "--get-regexp", r"^remote\..*\.(url|pushurl)$", vazio_se_1=True)
     if urls is None or (config is None and any(e.startswith("url:") for e in entradas)):
         return True
     todas = list(urls) + [sem_credencial(linha.split(" ", 1)[1].strip())

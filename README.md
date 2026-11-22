@@ -76,8 +76,10 @@ Hooks locais não conseguem validar título ou descrição de PR criado pelo sit
 
 ## Testes
 
-Os testes usam Spring Boot Test, JUnit 5, Git e Bash. Eles criam repositórios temporários e não alteram a configuração Git da máquina:
+Os testes usam Python 3, Git e Bash, com o módulo `unittest` da biblioteca padrão. Não há dependência para instalar. Os testes criam repositórios temporários e não alteram a configuração Git da máquina. Execute na raiz do projeto:
 
 ```bash
-mvn test
+python3 -m unittest discover -s tests -v
 ```
+
+No Windows, execute o mesmo comando no Git Bash. Se o Python não responde por `python3`, use `py` no lugar.

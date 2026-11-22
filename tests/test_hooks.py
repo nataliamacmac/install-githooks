@@ -449,6 +449,21 @@ class HookScriptsTest(unittest.TestCase):
         self.assertTrue((hooks_path.parent / "scan-custom-hooks.sh").is_file())
         self.assertFalse(any("backup" in p.name for p in hooks_path.iterdir()))
 
+    def test_instalador_copia_script_autonomia(self):
+        fake_home = self.temp / "home-autonomia"
+        xdg_home = fake_home / "config"
+        xdg_home.mkdir(parents=True)
+        env = {"GITHOOKS_HOME": str(fake_home), "XDG_CONFIG_HOME": str(xdg_home),
+               "GIT_CONFIG_GLOBAL": str(self.temp / "gitconfig-autonomia")}
+
+        instalar = self.executar(PROJECT, None, env, BASH, str(PROJECT / "install.sh"))
+
+        self.assertEqual(0, instalar.codigo, instalar.saida)
+        script = xdg_home / "git" / "autonomia"
+        self.assertTrue(script.is_file())
+        self.assertTrue(os.access(script, os.X_OK))
+        self.assertFalse((xdg_home / "git" / "autonomia.lista").exists())
+
     # ---------------------------------------------------------------- repos só leitura
 
     def test_sem_lista_somente_leitura_push_continua_permitido(self):
@@ -671,6 +686,87 @@ class HookScriptsTest(unittest.TestCase):
 
         self.assertEqual(0, commit.codigo, commit.saida)
         self.assertFalse(marca.exists())
+
+    # ---------------------------------------------------------------- lista de autonomia
+
+    def test_autonomia_sem_terminal_recusa_adicionar(self):
+        repo = self.criar_repositorio("autonomia-sem-terminal")
+        env = self.configurar_lista()
+        lista = Path(env["XDG_CONFIG_HOME"], "git", "autonomia.lista")
+
+        adicionar = self.executar(repo, "sim\n", env, BASH, str(PROJECT / "scripts/autonomia"),
+                                  "adicionar", f"pasta:{repo}")
+
+        self.assertNotEqual(0, adicionar.codigo, adicionar.saida)
+        self.assertIn("só funciona no terminal", adicionar.saida)
+        self.assertFalse(lista.exists())
+
+    def test_autonomia_adicionar_recusa_entrada_com_quebra_de_linha(self):
+        repo = self.criar_repositorio("autonomia-quebra")
+        env = self.configurar_lista()
+        lista = Path(env["XDG_CONFIG_HOME"], "git", "autonomia.lista")
+
+        adicionar = self.executar(repo, "sim\n", env, BASH, str(PROJECT / "scripts/autonomia"),
+                                  "adicionar", "pasta:/tmp\npasta:/etc")
+
+        self.assertNotEqual(0, adicionar.codigo, adicionar.saida)
+        self.assertIn("quebra de linha", adicionar.saida)
+        self.assertFalse(lista.exists())
+
+    def test_autonomia_remover_entrada_com_espaco_nas_pontas_da_linha(self):
+        repo = self.criar_repositorio("autonomia-espaco")
+        env = self.configurar_lista()
+        lista = Path(env["XDG_CONFIG_HOME"], "git", "autonomia.lista")
+        lista.write_text("  pasta:/tmp/a-autonomia  \npasta:/tmp/b-autonomia\n")
+        autonomia = str(PROJECT / "scripts/autonomia")
+
+        remover = self.executar(repo, None, env, BASH, autonomia, "remover", "pasta:/tmp/a-autonomia")
+        listar = self.executar(repo, None, env, BASH, autonomia, "listar")
+        ausente = self.executar(repo, None, env, BASH, autonomia, "remover", "pasta:/tmp/nao-existe")
+
+        self.assertEqual(0, remover.codigo, remover.saida)
+        self.assertEqual("pasta:/tmp/b-autonomia", listar.saida.strip())
+        self.assertNotEqual(0, ausente.codigo)
+        self.assertIn("Não está na lista", ausente.saida)
+
+    def test_autonomia_remover_e_listar(self):
+        repo = self.criar_repositorio("autonomia-remover")
+        env = self.configurar_lista()
+        lista = Path(env["XDG_CONFIG_HOME"], "git", "autonomia.lista")
+        lista.write_text("pasta:/tmp/a-autonomia\npasta:/tmp/b-autonomia\n")
+        autonomia = str(PROJECT / "scripts/autonomia")
+
+        remover = self.executar(repo, None, env, BASH, autonomia, "remover", "pasta:/tmp/a-autonomia")
+        listar = self.executar(repo, None, env, BASH, autonomia, "listar")
+
+        self.assertEqual(0, remover.codigo, remover.saida)
+        self.assertEqual("pasta:/tmp/b-autonomia", listar.saida.strip())
+
+    def test_autonomia_remover_entrada_com_barra_invertida(self):
+        repo = self.criar_repositorio("autonomia-barra")
+        env = self.configurar_lista()
+        lista = Path(env["XDG_CONFIG_HOME"], "git", "autonomia.lista")
+        lista.write_text("pasta:/tmp/x\\y\npasta:/tmp/b-autonomia\n")
+        autonomia = str(PROJECT / "scripts/autonomia")
+
+        remover = self.executar(repo, None, env, BASH, autonomia, "remover", "pasta:/tmp/x\\y")
+        listar = self.executar(repo, None, env, BASH, autonomia, "listar")
+
+        self.assertEqual(0, remover.codigo, remover.saida)
+        self.assertEqual("pasta:/tmp/b-autonomia", listar.saida.strip())
+
+    def test_autonomia_remover_recusa_entrada_com_quebra_de_linha(self):
+        repo = self.criar_repositorio("autonomia-remover-quebra")
+        env = self.configurar_lista()
+        lista = Path(env["XDG_CONFIG_HOME"], "git", "autonomia.lista")
+        lista.write_text("pasta:/tmp/a-autonomia\n")
+
+        remover = self.executar(repo, None, env, BASH, str(PROJECT / "scripts/autonomia"),
+                                "remover", "pasta:/tmp/a\npasta:/tmp/b")
+
+        self.assertNotEqual(0, remover.codigo, remover.saida)
+        self.assertIn("quebra de linha", remover.saida)
+        self.assertEqual("pasta:/tmp/a-autonomia\n", lista.read_text())
 
     # ---------------------------------------------------------------- apoio
 

@@ -9,6 +9,7 @@ HOOK_DIR="$CONFIG_ROOT/hooks"
 SCAN_TARGET="$CONFIG_ROOT/scan-custom-hooks.sh"
 SOMENTE_LEITURA_TARGET="$CONFIG_ROOT/somente-leitura"
 LISTA_SOMENTE_LEITURA="$CONFIG_ROOT/somente-leitura.lista"
+AUTONOMIA_TARGET="$CONFIG_ROOT/autonomia"
 SCAN_NOW=false
 
 case "${1:-}" in
@@ -54,6 +55,7 @@ for source in "$PROJECT_DIR"/hooks/*; do
 done
 install_file "$PROJECT_DIR/scripts/scan-custom-hooks.sh" "$SCAN_TARGET"
 install_file "$PROJECT_DIR/scripts/somente-leitura" "$SOMENTE_LEITURA_TARGET"
+install_file "$PROJECT_DIR/scripts/autonomia" "$AUTONOMIA_TARGET"
 
 delegated_hooks="applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit post-commit pre-rebase post-checkout post-merge post-rewrite pre-auto-gc post-index-change fsmonitor-watchman update post-update pre-receive post-receive proc-receive push-to-checkout sendemail-validate"
 for hook in $delegated_hooks; do

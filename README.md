@@ -86,6 +86,41 @@ O `install.sh` instala a trava com o script `agentes/instalar`:
 
 A trava precisa de Python 3.8 ou superior. O `install.sh` testa `python3`, `python` e `py`, nessa ordem, e grava no registro o primeiro que funciona. Assim o mesmo comando roda no macOS, no Linux e no Git Bash do Windows. Sem Python, os hooks do Git são instalados e a trava do agente fica de fora, com um aviso.
 
+O `git_guard.py` é a única trava de git e gh do agente. As regras de aprovação de git e gh saem do `settings.json` do agente, porque uma regra de aprovação ali vence a liberação que o hook dá.
+
+### Lista de autonomia
+
+A lista de autonomia libera o agente de IA em projetos escolhidos. A lista é particular desta máquina e fica em `~/.config/git/autonomia.lista`, ou em `$XDG_CONFIG_HOME/git/autonomia.lista` quando essa variável existe. As entradas usam o formato da lista só leitura: `url:` ou `pasta:`. O script `~/.config/git/autonomia` mantém a lista:
+
+```bash
+~/.config/git/autonomia adicionar
+~/.config/git/autonomia adicionar pasta:~/projetos/meu-projeto
+~/.config/git/autonomia listar
+~/.config/git/autonomia remover <entrada>
+```
+
+Num projeto da lista, todo git e gh que pede aprovação passa direto. Isso inclui `git push --force`, `gh pr merge`, `gh release create` e `gh repo delete` do próprio repositório. Uma entrada `url:` vale só se todo remoto do repositório começa com o prefixo. Uma entrada `pasta:` vale para todo remoto do repositório.
+
+A liberação vale só para o comando em que cada parte roda git, gh ou um destes comandos: `echo`, `printf`, `cat`, `true`, `test`, `[`, `head`, `tail`, `wc`, `grep`, `ls` e `pwd`. Isso vale também para o comando dentro de `$(...)`, de crase e de here-doc. Um redirecionamento que grava arquivo, `sudo`, qualquer `git config` (também o de leitura) ou outro comando na mesma linha, como `git push origin main && rm -rf x`, tira a liberação. Nesse caso, a trava não decide nada, e as regras de permissão do agente decidem, como para qualquer outro comando.
+
+Mesmo num projeto da lista, estes comandos continuam pedindo aprovação:
+
+- Comando que muda de repositório, como `cd`, `pushd`, `popd`, `git -C`, `git -c`, `--git-dir`, `--work-tree`, `git remote set-url`, `git config` com URL, as variáveis `GIT_*`, `GH_REPO` e `GH_HOST`, `xargs`, `gh -R` e `gh --repo`.
+- `git push` para destino que não é remoto nomeado, como um caminho ou uma URL.
+- URL ou `owner/repo` de outro repositório na posição em que o gh espera um repositório.
+- Alvo em variável, ou substituição com `$` ou crase, no comando que pede aprovação.
+- gh do escopo da conta, como `gh auth`, `gh extension`, `gh gist` e `gh ssh-key`.
+- Todo comando que cita a lista ou que executa `autonomia adicionar`.
+
+A lista só leitura vence a lista de autonomia. Num repositório que está nas duas listas, o agente sempre pede aprovação, e os hooks do Git ainda recusam o envio.
+
+O `adicionar` só funciona no terminal e pede que você digite `sim`. O agente de IA nunca deve pôr um projeto na lista. Tirar da lista não pede confirmação.
+
+A lista tem limites conhecidos:
+
+- A trava da lista confere o texto do comando. Um comando que monta o nome da lista numa variável passa por ela.
+- As ferramentas do agente que editam e gravam arquivos não passam pelo hook. Por isso o `settings.json` do agente nega essas ferramentas no arquivo da lista.
+
 ## Limites
 
 Hooks locais não conseguem validar título ou descrição de PR criado pelo site ou API. O `pre-push` valida branches e mensagens dos commits próprios; validação dos metadados do PR precisa ser configurada no provedor Git.

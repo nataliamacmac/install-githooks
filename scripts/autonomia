@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# install-githooks managed
+#
+# Mantém a lista particular de projetos em que o agente de IA tem autonomia nesta máquina.
+# A lista nunca vai para nenhum repositório: fica em ~/.config/git/autonomia.lista.
+# Só quem usa o terminal põe um projeto na lista. Tirar da lista não pede confirmação.
+set -euo pipefail
+
+LISTA="${XDG_CONFIG_HOME:-${HOME:?HOME precisa estar definido}/.config}/git/autonomia.lista"
+
+uso() {
+  cat <<'TEXTO'
+Uso: autonomia <comando>
+  adicionar               dá autonomia ao repo da pasta atual pela URL do remoto origin
+  adicionar url:<prefixo> dá autonomia aos remotos que começam com o prefixo
+  adicionar pasta:<pasta> dá autonomia aos repos dentro da pasta
+  listar                  mostra a lista
+  remover <entrada>       tira da lista
+O comando adicionar só funciona no terminal e pede que você digite sim.
+TEXTO
+}
+
+sem_credencial() {
+  printf '%s\n' "$1" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@#\1#'
+}
+
+entradas() {
+  [[ -f "$LISTA" ]] || return 0
+  sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' "$LISTA" | grep -E '^(url|pasta):.' || true
+}
+
+adicionar() {
+  local entrada="${1:-}" repo url pasta resposta
+  if [[ "$entrada" == *$'\n'* || "$entrada" == *$'\r'* ]]; then
+    printf 'Recusado: a entrada não pode ter quebra de linha.\n' >&2
+    exit 2
+  fi
+  if [[ ! -t 0 ]]; then
+    printf 'Recusado: adicionar só funciona no terminal, com confirmação de quem usa a máquina.\n' >&2
+    exit 1
+  fi
+  if [[ -z "$entrada" ]]; then
+    repo="$(git rev-parse --show-toplevel 2>/dev/null)" || { printf 'Fora de um repositório git. Informe url:<prefixo> ou pasta:<pasta>.\n' >&2; exit 2; }
+    if url="$(git config --get remote.origin.url 2>/dev/null)"; then
+      entrada="url:$(sem_credencial "$url")"
+    else
+      entrada="pasta:$(cd "$repo" && pwd -P)"
+    fi
+  fi
+  case "$entrada" in
+    url:?*) entrada="url:$(sem_credencial "${entrada#url:}")" ;;
+    pasta:?*)
+      pasta="${entrada#pasta:}"
+      pasta="${pasta/#\~/$HOME}"
+      pasta="$(cd "$pasta" 2>/dev/null && pwd -P)" || { printf 'Pasta não encontrada: %s\n' "${entrada#pasta:}" >&2; exit 2; }
+      entrada="pasta:$pasta"
+      ;;
+    *) uso >&2; exit 2 ;;
+  esac
+  if entradas | grep -xF -- "$entrada" >/dev/null; then
+    printf 'Já está na lista: %s\n' "$entrada"
+    return 0
+  fi
+  printf 'Dar autonomia ao agente de IA em %s? Digite sim para confirmar: ' "$entrada"
+  IFS= read -r resposta || resposta=""
+  [[ "$resposta" == sim ]] || { printf 'Nada mudou.\n'; exit 1; }
+  mkdir -p "$(dirname "$LISTA")"
+  printf '%s\n' "$entrada" >> "$LISTA"
+  printf 'Autonomia dada: %s\n' "$entrada"
+}
+
+remover() {
+  local entrada="${1:-}" temporario
+  if [[ "$entrada" == *$'\n'* || "$entrada" == *$'\r'* ]]; then
+    printf 'Recusado: a entrada não pode ter quebra de linha.\n' >&2
+    exit 2
+  fi
+  entrada="${entrada#"${entrada%%[![:space:]]*}"}"
+  entrada="${entrada%"${entrada##*[![:space:]]}"}"
+  [[ -n "$entrada" ]] || { uso >&2; exit 2; }
+  entradas | grep -xF -- "$entrada" >/dev/null || { printf 'Não está na lista: %s\n' "$entrada" >&2; exit 1; }
+  temporario="$(mktemp)"
+  ALVO="$entrada" awk '{ linha = $0; gsub(/^[[:space:]]+|[[:space:]]+$/, "", linha); if (linha != ENVIRON["ALVO"]) print }' "$LISTA" > "$temporario"
+  mv -f "$temporario" "$LISTA"
+  printf 'Autonomia tirada: %s\n' "$entrada"
+}
+
+case "${1:-}" in
+  adicionar) shift; adicionar "${1:-}" ;;
+  listar) entradas ;;
+  remover) shift; remover "${1:-}" ;;
+  -h|--help|"") uso ;;
+  *) uso >&2; exit 2 ;;
+esac

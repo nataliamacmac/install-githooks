@@ -99,6 +99,8 @@ A lista de autonomia libera o agente de IA em projetos escolhidos. A lista é pa
 ~/.config/git/autonomia remover <entrada>
 ```
 
+No Windows, o Git Bash é requisito: execute o script `autonomia` no Git Bash. O script grava a pasta no formato do bash (`/c/Users/...`), e a trava converte esse caminho para `C:/Users/...` e compara sem diferenciar maiúsculas e minúsculas. A trava também aceita os formatos do WSL (`/mnt/c/...`) e do Cygwin (`/cygdrive/c/...`).
+
 Num projeto da lista, todo git e gh que pede aprovação passa direto. Isso inclui `git push --force`, `gh pr merge`, `gh release create` e `gh repo delete` do próprio repositório. Uma entrada `url:` vale só se todo remoto do repositório começa com o prefixo. Uma entrada `pasta:` vale para todo remoto do repositório.
 
 A liberação vale só para o comando em que cada parte roda git, gh ou um destes comandos: `echo`, `printf`, `cat`, `true`, `test`, `[`, `head`, `tail`, `wc`, `grep`, `ls` e `pwd`. Isso vale também para o comando dentro de `$(...)`, de crase e de here-doc. Um redirecionamento que grava arquivo, `sudo`, qualquer `git config` (também o de leitura) ou outro comando na mesma linha, como `git push origin main && rm -rf x`, tira a liberação. Nesse caso, a trava não decide nada, e as regras de permissão do agente decidem, como para qualquer outro comando.

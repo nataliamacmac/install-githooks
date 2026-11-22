@@ -556,12 +556,40 @@ def sem_credencial(url):
     return re.sub(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@", r"\1", url)
 
 
+WINDOWS = os.name == "nt"
+
+
+def msys_para_windows(caminho):
+    """No Git Bash, o script autonomia grava '/c/Users/...' (WSL: '/mnt/c/...', Cygwin: '/cygdrive/c/...').
+
+    O Python do Windows enxerga 'C:/Users/...'.
+    """
+    casou = re.match(r"^(?:/mnt|/cygdrive)?/([A-Za-z])(/.*)?$", caminho)
+    return casou.group(1).upper() + ":" + (casou.group(2) or "/") if casou else caminho
+
+
+def normalizar(caminho, windows=WINDOWS):
+    """No Windows, barra normal e minúsculas, porque o sistema de arquivos não diferencia maiúsculas."""
+    if windows:
+        caminho = caminho.replace("\\", "/").lower()
+    return caminho.rstrip("/") or "/"
+
+
+def caminho_comparavel(caminho):
+    return normalizar(os.path.realpath(msys_para_windows(caminho) if WINDOWS else caminho))
+
+
+def dentro_da_pasta(repo, pasta):
+    """repo e pasta já normalizados. O repo é a própria pasta ou fica dentro dela."""
+    return (repo + "/").startswith(pasta.rstrip("/") + "/")
+
+
 def pasta_do_repo(cwd):
     """O repo principal, também para worktrees, como em hooks/_somente_leitura. None fora de repo."""
     comum = git(cwd, "rev-parse", "--git-common-dir")
     if not comum or not comum.strip():
         return None
-    comum = os.path.realpath(os.path.join(cwd, comum.strip()))
+    comum = caminho_comparavel(os.path.join(cwd, comum.strip()))
     return comum[:-len("/.git")] if comum.endswith("/.git") else comum
 
 
@@ -611,8 +639,8 @@ def so_leitura(cwd, repo, urls):
         if entrada.startswith("url:") and any(url.startswith(entrada[4:]) for url in todas):
             return True
         if entrada.startswith("pasta:"):
-            pasta = os.path.realpath(entrada[6:])
-            if os.path.isdir(pasta) and (repo + "/").startswith(pasta + "/"):
+            pasta = caminho_comparavel(entrada[6:])
+            if os.path.isdir(pasta) and dentro_da_pasta(repo, pasta):
                 return True
     return False
 
@@ -642,8 +670,8 @@ def autonomia_do_repo(cwd):
                 if urls and all(url.startswith(entrada[4:]) for url in urls):
                     return entrada, remotos, urls
             elif entrada.startswith("pasta:") and len(entrada) > 6:
-                pasta = os.path.realpath(entrada[6:])
-                if os.path.isdir(pasta) and (repo + "/").startswith(pasta + "/"):
+                pasta = caminho_comparavel(entrada[6:])
+                if os.path.isdir(pasta) and dentro_da_pasta(repo, pasta):
                     return entrada, remotos, urls or []
     except Exception:
         return None, [], []

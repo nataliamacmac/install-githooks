@@ -37,6 +37,21 @@ class GitGuardTest(unittest.TestCase):
                         "git config --local x.y z", "git stash", "git reset --hard", "git remote prune origin"):
             self.assertIsNone(self.guarda.analisar(comando), comando)
 
+    def test_caminho_do_git_bash_vira_caminho_do_windows(self):
+        guarda = self.guarda
+        self.assertEqual("C:/Users/natalia/Developer", guarda.msys_para_windows("/c/Users/natalia/Developer"))
+        self.assertEqual("D:/", guarda.msys_para_windows("/d"))
+        self.assertEqual("C:/Users/n", guarda.msys_para_windows("/mnt/c/Users/n"))
+        self.assertEqual("C:/Users/n", guarda.msys_para_windows("/cygdrive/c/Users/n"))
+        self.assertEqual("C:/Users/n", guarda.msys_para_windows("C:/Users/n"))
+        self.assertEqual("/home/n", guarda.msys_para_windows("/home/n"))
+        self.assertEqual("c:/users/natalia/developer", guarda.normalizar("C:\\Users\\Natalia\\Developer", True))
+        self.assertEqual("/Users/Jonas", guarda.normalizar("/Users/Jonas", False))
+        pasta = guarda.normalizar(guarda.msys_para_windows("/c/Users/Natalia/Developer"), True)
+        repo = guarda.normalizar("C:\\Users\\natalia\\Developer\\projeto", True)
+        self.assertTrue(guarda.dentro_da_pasta(repo, pasta))
+        self.assertFalse(guarda.dentro_da_pasta("c:/users/natalia/developer-outro", pasta))
+
     def test_gh_que_so_le_ou_grava_na_maquina_passa(self):
         for comando in ("gh auth token", "GH_TOKEN=$(gh auth token) python3 x.py", "gh auth status",
                         "gh config get git_protocol", "gh config list", "gh repo clone o/r", "gh pr checkout 12",
